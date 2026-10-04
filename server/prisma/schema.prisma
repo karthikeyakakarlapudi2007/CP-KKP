@@ -1,0 +1,119 @@
+// Kodikura Pappucharu — Dine-In system schema
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TableStatus {
+  vacant
+  occupied
+  bill_requested
+}
+
+enum OrderStatus {
+  pending
+  preparing
+  served
+  paid
+  cancelled
+}
+
+model RestaurantTable {
+  /// Table number (1, 2, 3 ...)
+  id            Int         @id
+  qr_code_token String      @unique
+  status        TableStatus @default(vacant)
+  created_at    DateTime    @default(now())
+  orders        Order[]
+
+  @@map("restaurant_tables")
+}
+
+model Category {
+  id         Int        @id @default(autoincrement())
+  name_en    String
+  name_te    String
+  sort_order Int        @default(0)
+  items      MenuItem[]
+
+  @@index([sort_order])
+  @@map("categories")
+}
+
+model MenuItem {
+  id             Int           @id @default(autoincrement())
+  category_id    Int
+  name_en        String
+  name_te        String
+  description_en String?
+  description_te String?
+  price          Decimal       @db.Decimal(10, 2)
+  image_url      String?
+  is_available   Boolean       @default(true)
+  is_combo       Boolean       @default(false)
+  category       Category      @relation(fields: [category_id], references: [id], onDelete: Restrict)
+  combo_steps    ComboConfig[]
+  order_items    OrderItem[]
+
+  @@index([category_id])
+  @@map("menu_items")
+}
+
+/// One step of a combo builder (Step 1: Base, Step 2: Curry, Step 3: Add-on ...)
+model ComboConfig {
+  id            Int      @id @default(autoincrement())
+  menu_item_id  Int
+  step_number   Int
+  step_title_en String
+  step_title_te String
+  /// Mandatory steps must have at least one option selected
+  is_required   Boolean  @default(true)
+  /// Maximum number of options the guest may pick in this step
+  max_select    Int      @default(1)
+  /// [{ id, name_en, name_te, additional_price }]
+  options       Json     @db.JsonB
+  menu_item     MenuItem @relation(fields: [menu_item_id], references: [id], onDelete: Cascade)
+
+  @@unique([menu_item_id, step_number])
+  @@map("combo_configs")
+}
+
+model Order {
+  id             String          @id @default(uuid()) @db.Uuid
+  table_number   Int
+  total_amount   Decimal         @db.Decimal(10, 2)
+  status         OrderStatus     @default(pending)
+  customer_notes String?
+  bill_requested Boolean         @default(false)
+  created_at     DateTime        @default(now())
+  updated_at     DateTime        @updatedAt
+  table          RestaurantTable @relation(fields: [table_number], references: [id], onDelete: Restrict)
+  items          OrderItem[]
+
+  @@index([status, created_at])
+  @@index([table_number, status])
+  @@map("orders")
+}
+
+model OrderItem {
+  id                     Int      @id @default(autoincrement())
+  order_id               String   @db.Uuid
+  menu_item_id           Int
+  /// "English Name / తెలుగు పేరు" copy taken at order time
+  item_name_snapshot     String
+  quantity               Int
+  unit_price             Decimal  @db.Decimal(10, 2)
+  /// [{ step_number, step_title_en, step_title_te, options: [{ id, name_en, name_te, additional_price }] }]
+  selected_combo_options Json?    @db.JsonB
+  item_notes             String?
+  order                  Order    @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  menu_item              MenuItem @relation(fields: [menu_item_id], references: [id], onDelete: Restrict)
+
+  @@index([order_id])
+  @@index([menu_item_id])
+  @@map("order_items")
+}

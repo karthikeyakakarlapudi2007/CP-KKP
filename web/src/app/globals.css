@@ -1,0 +1,78 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --background: oklch(0.985 0.008 85);
+  --foreground: oklch(0.22 0.02 40);
+  --card: oklch(1 0 0);
+  --card-foreground: var(--foreground);
+  --muted: oklch(0.95 0.01 80);
+  --muted-foreground: oklch(0.5 0.02 50);
+  --border: oklch(0.9 0.015 75);
+  --input: oklch(0.88 0.015 75);
+  /* Chilli red — Andhra spice */
+  --primary: oklch(0.55 0.2 30);
+  --primary-foreground: oklch(0.99 0 0);
+  /* Turmeric / gold */
+  --accent: oklch(0.82 0.16 80);
+  --accent-foreground: oklch(0.25 0.04 60);
+  --destructive: oklch(0.58 0.22 27);
+  --success: oklch(0.6 0.15 150);
+  --ring: oklch(0.55 0.2 30);
+  --radius: 0.75rem;
+}
+
+.dark {
+  --background: oklch(0.14 0.005 260);
+  --foreground: oklch(0.97 0 0);
+  --card: oklch(0.2 0.006 260);
+  --card-foreground: oklch(0.97 0 0);
+  --muted: oklch(0.26 0.008 260);
+  --muted-foreground: oklch(0.72 0.01 260);
+  --border: oklch(0.32 0.01 260);
+  --input: oklch(0.32 0.01 260);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --font-sans: var(--font-body), "Noto Sans Telugu", system-ui, sans-serif;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  body {
+    background: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
+
+@media print {
+  .no-print { display: none !important; }
+  body { background: white; }
+}

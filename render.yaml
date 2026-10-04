@@ -1,0 +1,31 @@
+# Render Blueprint — API + realtime gateway + PostgreSQL
+databases:
+  - name: kodikura-db
+    plan: basic-256mb
+    databaseName: kodikura
+    user: kodikura
+
+services:
+  - type: web
+    name: kodikura-api
+    runtime: node
+    rootDir: server
+    plan: starter
+    buildCommand: npm ci --include=dev && npm run build
+    # Migrations + idempotent seed (tables 1–20; menu only when empty)
+    preDeployCommand: npx prisma migrate deploy && npx prisma db seed
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: kodikura-db
+          property: connectionString
+      - key: NODE_ENV
+        value: production
+      - key: CORS_ORIGIN
+        sync: false # e.g. https://kodikura.vercel.app
+      - key: STAFF_API_KEY
+        generateValue: true
+      - key: TZ_OFFSET_MINUTES
+        value: "330"
