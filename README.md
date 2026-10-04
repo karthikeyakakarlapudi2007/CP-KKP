@@ -9,7 +9,7 @@ table with the server; there are no customer logins and no online payment gatewa
 | --- | --- | --- |
 | Guest menu, cart, order tracking, bill request | `/t/[tableId]` | Guests (mobile) |
 | **Live Orders**: table grid, bill alerts, table drawer with "Mark as Paid / Cash Collected", ticket pipeline | `/admin` (`?tab=orders`) | Floor manager / cashier |
-| **Menu & Inventory**: dish table, instant stock switches, Add New Dish | `/admin?tab=menu` | Manager |
+| **Menu & Inventory**: self-serve CMS: categories (add/rename/reorder/delete), dishes (create/edit/delete/restore), visual combo-step editor, instant stock switches | `/admin?tab=menu` | Manager |
 | **Analytics**: today's revenue, fulfilled orders, average ticket, top 5 dishes, history | `/admin?tab=analytics` | Owner |
 | **Table QRs**: printable A4 stickers (2×2 / 3×3), SVG/PNG download | `/admin/qr` | Manager |
 | Kitchen Display System (dark, high contrast, bell + urgency colours) | `/kds` | Kitchen |
@@ -56,7 +56,8 @@ web/
   src/components/customer/    # CustomerApp, CustomerHeader, CategoryNav (scroll-spy), MenuItemCard,
                               # ComboBuilderModal, CartDrawer (sticky bar + slide-up drawer), OrderTracker
   src/components/admin/       # AdminShell (tabs + BillAlertBanner), LiveOrdersTab, TableDetailsDrawer,
-                              # MenuInventoryTab, ItemFormDialog, AnalyticsTab, QrStickerSheet,
+                              # MenuInventoryTab, CategoryManager, MenuItemModal, ComboConfigEditor,
+                              # AnalyticsTab, QrStickerSheet,
                               # ThermalReceipt + ReceiptDialog (80mm bill)
   src/components/kds/         # KdsBoard, KdsTicket
   src/store/                  # Zustand: useCustomerStore (table, language, cart, activeOrder), useStaffStore
@@ -90,6 +91,27 @@ npm run dev                     # http://localhost:3000
 
 Open `http://localhost:3000/t/1` on a phone-sized viewport, `/kds` in another window and `/admin` in a third,
 then place an order and watch it flow through.
+
+## Self-serve menu CMS (`/admin?tab=menu`)
+
+Staff run the whole menu from the browser, and every save broadcasts `menu:updated` so guest phones
+refresh in the background with no reload.
+
+* **CategoryManager.** Add, rename, reorder with up/down arrows (`PUT /api/categories/reorder`, one
+  transaction) and filter the dish table. Delete is **blocked** while live dishes use the category. A
+  category holding only archived dishes is archived instead of erased.
+* **MenuItemModal** (create + edit). Category, EN/TE names (the Telugu name must be in Telugu script),
+  EN/TE descriptions, price (`249` / `249.50`, up to ₹1,00,000), image URL with a live preview, in-stock
+  switch and an `is_combo` checkbox. Field errors show inline, and toasts report success or failure.
+* **ComboConfigEditor.** `+ Add Step`, EN/TE step titles, mandatory flag, "guests pick up to N",
+  reorderable steps, and options (EN, TE, extra ₹), plus a preview of what guests will see. Saved to
+  `ComboConfig` (option ids are kept across edits). The guest combo builder renders whatever is configured.
+* **Delete & archive.** A dish that was never ordered is deleted. A dish that appears on any past order is
+  **archived** (`archived_at`): hidden from guests and staff lists, unorderable, but its order lines,
+  receipts and analytics stay intact. It can be restored from "Archived dishes" and comes back out of stock
+  for review.
+* **Guest carts stay honest.** When the menu changes, carts are re-validated and re-priced. Lines whose
+  options were removed are dropped, prices update, and the guest sees a notice.
 
 ## Rush-hour behaviour
 
@@ -216,15 +238,17 @@ Public (guest) endpoints are rate-limited where they write; staff endpoints need
 | `GET /api/tables` | staff | Floor overview with amount due |
 | `POST /api/tables/:ref/settle` | staff | Mark every open order on a table paid, reset to vacant |
 | `PATCH /api/menu-items/:id/availability` | staff | Instant stock toggle |
-| `POST/PUT/DELETE /api/menu-items[/:id]` | staff | Dish CRUD (incl. combo steps) |
-| `POST/PUT/DELETE /api/categories[/:id]` | staff | Category CRUD |
+| `POST/PUT/DELETE /api/menu-items[/:id]` | staff | Dish CRUD incl. combo steps. DELETE archives dishes with order history |
+| `POST /api/menu-items/:id/restore` | staff | Bring an archived dish back (out of stock) |
+| `POST/PUT/DELETE /api/categories[/:id]` | staff | Category CRUD. DELETE is blocked while live dishes are linked |
+| `PUT /api/categories/reorder` | staff | `{ ids: [...] }` sets sort order 10, 20, 30… atomically |
+| `GET /api/menu?include_archived=1` | staff | Menu including archived dishes and categories |
 | `GET /api/analytics/summary?range=today\|7d\|30d` | staff | Revenue, fulfilled orders, average ticket, top dishes |
 
 ## Behaviour notes
 
 * **Mark as Paid** closes the ticket (status `paid`, which archives it into history). When a table has no
   other open orders, it resets to `vacant`. Tapping a table on the floor map settles all of its orders at once.
-* Dishes with order history can't be deleted, which keeps reports intact. Mark them out of stock instead.
 * Combo steps support mandatory/optional steps and multi-select limits (`is_required`, `max_select` on
   `ComboConfig`). Selected options are snapshotted onto each `OrderItem`, so later menu edits never change
   past orders.

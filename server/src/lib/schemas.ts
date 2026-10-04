@@ -31,9 +31,13 @@ export const comboStepSchema = z
     message: "Option ids must be unique within a step",
   });
 
+/** At least one character from the Telugu Unicode block (U+0C00–U+0C7F) */
+const TELUGU = /[\u0C00-\u0C7F]/;
+const teluguText = (max: number) => text(max).refine((v) => TELUGU.test(v), "Use Telugu script (తెలుగు)");
+
 export const categorySchema = z.object({
   name_en: text(80),
-  name_te: text(80),
+  name_te: teluguText(80),
   sort_order: z.coerce.number().int().min(0).max(10000).default(0),
 });
 
@@ -48,7 +52,7 @@ export const menuItemSchema = z
   .object({
     category_id: z.coerce.number().int().positive(),
     name_en: text(120),
-    name_te: text(120),
+    name_te: teluguText(120),
     description_en: optText(500),
     description_te: optText(500),
     price: z.coerce.number().min(0).max(100000),
@@ -68,6 +72,10 @@ export const menuItemSchema = z
     message: "Combo items need at least one step",
     path: ["combo_steps"],
   });
+
+export const reorderSchema = z.object({
+  ids: z.array(z.coerce.number().int().positive()).min(1).max(200),
+});
 
 export const availabilitySchema = z.object({ is_available: z.boolean() });
 

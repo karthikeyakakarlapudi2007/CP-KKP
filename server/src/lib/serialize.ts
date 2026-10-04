@@ -43,6 +43,7 @@ export function serializeMenuItem(i: ItemWithSteps) {
     image_url: i.image_url,
     is_available: i.is_available,
     is_combo: i.is_combo,
+    archived_at: i.archived_at?.toISOString() ?? null,
     combo_steps: [...i.combo_steps]
       .sort((a, b) => a.step_number - b.step_number)
       .map((s) => ({

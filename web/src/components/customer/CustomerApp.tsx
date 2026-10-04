@@ -99,14 +99,15 @@ export function CustomerApp({ tableRef }: { tableRef: string }) {
     void load();
   }, [load]);
 
-  // A persisted cart may hold dishes that went out of stock while the phone was away
+  // Every menu change (stock toggle, staff edits via menu:updated, a stale persisted cart) re-validates
+  // and re-prices the cart so what the guest sees always matches what the kitchen will charge.
   useEffect(() => {
     if (!categories.length) return;
-    const orderable = new Set(categories.flatMap((c) => c.items).filter((i) => i.is_available).map((i) => i.id));
-    const gone = useCustomerStore.getState().cart.filter((l) => !orderable.has(l.menuItemId)).map((l) => l.menuItemId);
-    if (gone.length && useCustomerStore.getState().removeMenuItems(gone) > 0) showToast(translate("itemsWentOos", lang));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [categories]);
+    const { removed, repriced } = useCustomerStore.getState().reconcileCart(categories.flatMap((c) => c.items));
+    const language = useCustomerStore.getState().language;
+    if (removed > 0) showToast(translate("cartItemsChanged", language));
+    else if (repriced > 0) showToast(translate("cartRepriced", language));
+  }, [categories, showToast]);
 
   /* ---------------- realtime ---------------- */
 

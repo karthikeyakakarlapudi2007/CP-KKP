@@ -1,6 +1,6 @@
 import { API_URL } from "./config";
 import { useStaffStore } from "@/store/useStaffStore";
-import type { AnalyticsSummary, Category, ComboStep, Order, TableStatus, TableSummary } from "./types";
+import type { AnalyticsSummary, Category, ComboStep, MenuItem, Order, TableStatus, TableSummary } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -60,6 +60,8 @@ export type CategoryInput = { name_en: string; name_te: string; sort_order: numb
 export const api = {
   config: () => request<{ staff_key_required: boolean }>("/api/config"),
   menu: () => request<{ categories: Category[] }>("/api/menu"),
+  /** staff view incl. archived dishes/categories */
+  menuWithArchived: () => request<{ categories: Category[] }>("/api/menu?include_archived=1", { staff: true }),
 
   // Customer
   table: (ref: string) => request<{ id: number; status: TableStatus }>(`/api/tables/${encodeURIComponent(ref)}`),
@@ -85,10 +87,14 @@ export const api = {
       body: json({ is_available }),
       staff: true,
     }),
-  createItem: (b: MenuItemInput) => request("/api/menu-items", { method: "POST", body: json(b), staff: true }),
-  updateItem: (id: number, b: MenuItemInput) => request(`/api/menu-items/${id}`, { method: "PUT", body: json(b), staff: true }),
-  deleteItem: (id: number) => request(`/api/menu-items/${id}`, { method: "DELETE", staff: true }),
+  createItem: (b: MenuItemInput) => request<MenuItem>("/api/menu-items", { method: "POST", body: json(b), staff: true }),
+  updateItem: (id: number, b: MenuItemInput) => request<MenuItem>(`/api/menu-items/${id}`, { method: "PUT", body: json(b), staff: true }),
+  deleteItem: (id: number) =>
+    request<{ mode: "deleted" | "archived"; order_lines: number }>(`/api/menu-items/${id}`, { method: "DELETE", staff: true }),
+  restoreItem: (id: number) => request<MenuItem>(`/api/menu-items/${id}/restore`, { method: "POST", staff: true }),
   createCategory: (b: CategoryInput) => request("/api/categories", { method: "POST", body: json(b), staff: true }),
   updateCategory: (id: number, b: CategoryInput) => request(`/api/categories/${id}`, { method: "PUT", body: json(b), staff: true }),
-  deleteCategory: (id: number) => request(`/api/categories/${id}`, { method: "DELETE", staff: true }),
+  deleteCategory: (id: number) =>
+    request<{ mode: "deleted" | "archived" }>(`/api/categories/${id}`, { method: "DELETE", staff: true }),
+  reorderCategories: (ids: number[]) => request(`/api/categories/reorder`, { method: "PUT", body: json({ ids }), staff: true }),
 };

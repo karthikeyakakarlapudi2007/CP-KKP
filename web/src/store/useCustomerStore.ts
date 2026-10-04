@@ -46,6 +46,8 @@ type CustomerState = {
   removeItem: (id: string) => void;
   setItemNotes: (id: string, notes: string) => void;
   removeMenuItems: (menuItemIds: number[]) => number;
+  /** re-validate + re-price the cart against a freshly loaded menu (staff may have edited it) */
+  reconcileCart: (menu: MenuItem[]) => { removed: number; repriced: number };
   setOrderNotes: (notes: string) => void;
   clearCart: () => void;
 
@@ -63,6 +65,35 @@ const lineId = (menuItemId: number, steps?: SelectedStep[] | null) =>
         .map((s) => `${s.step_number}:${s.options.map((o) => o.id).sort().join(",")}`)
         .join(";")}`
     : String(menuItemId);
+
+/**
+ * Rebuild a cart line from the current menu definition. Returns null when the line can no longer
+ * be ordered as built (combo option removed, required step added, item became / stopped being a combo).
+ */
+function rebuildLine(line: CartItem, item: MenuItem): CartItem | null {
+  const name = { en: item.name_en, te: item.name_te };
+  if (!line.selectedComboOptions?.length) {
+    if (item.is_combo) return null;
+    return item.price === line.unitPrice && name.en === line.name.en && name.te === line.name.te ? line : { ...line, name, unitPrice: item.price };
+  }
+  if (!item.is_combo) return null;
+  const steps = new Map(item.combo_steps.map((s) => [s.step_number, s]));
+  const chosen = new Map(line.selectedComboOptions.map((s) => [s.step_number, s]));
+  const rebuilt: SelectedStep[] = [];
+  for (const step of item.combo_steps) {
+    const sel = chosen.get(step.step_number);
+    if (!sel) {
+      if (step.is_required) return null;
+      continue;
+    }
+    const options = sel.options.map((o) => step.options.find((x) => x.id === o.id));
+    if (options.some((o) => !o) || options.length > step.max_select) return null;
+    rebuilt.push({ step_number: step.step_number, step_title_en: step.step_title_en, step_title_te: step.step_title_te, options: options as SelectedStep["options"] });
+  }
+  if ([...chosen.keys()].some((n) => !steps.has(n))) return null; // a step the guest chose from was deleted
+  const unitPrice = Math.round((item.price + rebuilt.reduce((s, st) => s + st.options.reduce((a, o) => a + o.additional_price, 0), 0)) * 100) / 100;
+  return { ...line, name, unitPrice, selectedComboOptions: rebuilt };
+}
 
 function deriveActive(orders: Order[], billRequested: boolean): ActiveOrder | null {
   const latest = [...orders].sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
@@ -124,6 +155,24 @@ export const useCustomerStore = create<CustomerState>()(
         const cart = get().cart.filter((l) => !ids.includes(l.menuItemId));
         set({ cart });
         return before - cart.length;
+      },
+      reconcileCart: (menu) => {
+        const byId = new Map(menu.map((m) => [m.id, m]));
+        let removed = 0;
+        let repriced = 0;
+        const next: CartItem[] = [];
+        for (const line of get().cart) {
+          const item = byId.get(line.menuItemId);
+          const rebuilt = item && item.is_available && !item.archived_at ? rebuildLine(line, item) : null;
+          if (!rebuilt) {
+            removed += line.quantity;
+            continue;
+          }
+          if (Math.abs(rebuilt.unitPrice - line.unitPrice) > 0.001) repriced += 1;
+          next.push(rebuilt);
+        }
+        if (removed || repriced || next.some((l, i) => l !== get().cart[i])) set({ cart: next });
+        return { removed, repriced };
       },
       setOrderNotes: (orderNotes) => set({ orderNotes: orderNotes.slice(0, 500) }),
       clearCart: () => set({ cart: [], orderNotes: "" }),

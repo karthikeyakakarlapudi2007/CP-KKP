@@ -95,6 +95,8 @@ export const translations = {
   invalidTable: { en: "This table link is not valid. Please scan the QR code on your table again.", te: "ఈ టేబుల్ లింక్ సరైనది కాదు. దయచేసి మీ టేబుల్‌పై ఉన్న QR కోడ్‌ను మళ్లీ స్కాన్ చేయండి." },
   loadError: { en: "Could not load the menu. Check your connection.", te: "మెనూ లోడ్ కాలేదు. మీ కనెక్షన్ చూడండి." },
   offline: { en: "Reconnecting…", te: "మళ్ళీ కనెక్ట్ అవుతోంది…" },
+  cartItemsChanged: { en: "The menu was just updated — some items in your cart changed or sold out and were removed.", te: "మెనూ ఇప్పుడే మారింది — మీ కార్ట్‌లోని కొన్ని ఐటమ్స్ మారాయి లేదా అయిపోయాయి, అవి తీసివేయబడ్డాయి." },
+  cartRepriced: { en: "The menu was just updated — your cart prices have been refreshed.", te: "మెనూ ఇప్పుడే మారింది — మీ కార్ట్ ధరలు నవీకరించబడ్డాయి." },
   itemsWentOos: { en: "Some items just went out of stock and were removed from your cart.", te: "కొన్ని ఐటమ్స్ అయిపోయాయి, అవి కార్ట్ నుండి తీసివేయబడ్డాయి." },
   orderFailed: { en: "Could not place the order. Please try again.", te: "ఆర్డర్ పంపలేకపోయాం. మళ్ళీ ప్రయత్నించండి." },
   orderUncertain: { en: "The kitchen didn't confirm in time. Check Track Order before retrying.", te: "వంటగది నుండి నిర్ధారణ రాలేదు. మళ్ళీ ప్రయత్నించే ముందు ఆర్డర్ స్థితి చూడండి." },

@@ -48,7 +48,7 @@ export async function buildOrder(input: CreateOrderInput) {
   const lines = input.items.map((line) => {
     const item = byId.get(line.menu_item_id);
     if (!item) throw new HttpError(400, `Menu item ${line.menu_item_id} not found`);
-    if (!item.is_available) {
+    if (!item.is_available || item.archived_at) {
       unavailable.push(item.id);
       return null;
     }

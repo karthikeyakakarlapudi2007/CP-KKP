@@ -119,8 +119,12 @@ export async function updateOrderStatus(id: string, status: Exclude<OrderStatus,
 
 /** menu:toggle_availability — flips stock for one dish on every connected screen. */
 export async function toggleAvailability(menuItemId: number, isAvailable: boolean) {
-  const item = await prisma.menuItem.update({ where: { id: menuItemId }, data: { is_available: isAvailable } });
-  const payload = { menu_item_id: item.id, is_available: item.is_available };
+  const changed = await prisma.menuItem.updateMany({
+    where: { id: menuItemId, archived_at: null },
+    data: { is_available: isAvailable },
+  });
+  if (changed.count === 0) throw new HttpError(404, "Dish not found");
+  const payload = { menu_item_id: menuItemId, is_available: isAvailable };
   broadcast.availabilityToggled(payload);
   return payload;
 }

@@ -34,11 +34,13 @@ model RestaurantTable {
 }
 
 model Category {
-  id         Int        @id @default(autoincrement())
-  name_en    String
-  name_te    String
-  sort_order Int        @default(0)
-  items      MenuItem[]
+  id          Int        @id @default(autoincrement())
+  name_en     String
+  name_te     String
+  sort_order  Int        @default(0)
+  /// soft-deleted: hidden everywhere, kept only because archived dishes still point at it
+  archived_at DateTime?
+  items       MenuItem[]
 
   @@index([sort_order])
   @@map("categories")
@@ -55,6 +57,8 @@ model MenuItem {
   image_url      String?
   is_available   Boolean       @default(true)
   is_combo       Boolean       @default(false)
+  /// soft-deleted dish: hidden from every menu, kept so past orders + analytics stay intact
+  archived_at    DateTime?
   category       Category      @relation(fields: [category_id], references: [id], onDelete: Restrict)
   combo_steps    ComboConfig[]
   order_items    OrderItem[]

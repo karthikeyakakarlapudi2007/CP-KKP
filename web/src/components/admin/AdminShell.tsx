@@ -4,6 +4,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { ChefHat, Volume2, VolumeX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { unlockAudio } from "@/lib/chime";
+import { Toaster } from "@/components/shared/Toaster";
 import { cn } from "@/lib/utils";
 import { useStaffStore } from "@/store/useStaffStore";
 import { BillAlertBanner } from "./BillAlertBanner";
@@ -58,6 +59,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         <BillAlertBanner />
       </header>
       <div className="mx-auto max-w-[1600px] p-6 print:max-w-none print:p-0">{children}</div>
+      <Toaster />
     </div>
   );
 }

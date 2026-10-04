@@ -23,6 +23,8 @@ export type MenuItem = {
   image_url: string | null;
   is_available: boolean;
   is_combo: boolean;
+  /** set when soft-deleted (only visible to staff with include_archived) */
+  archived_at?: string | null;
   combo_steps: ComboStep[];
 };
 
@@ -31,6 +33,7 @@ export type Category = {
   name_en: string;
   name_te: string;
   sort_order: number;
+  archived_at?: string | null;
   items: MenuItem[];
 };
 

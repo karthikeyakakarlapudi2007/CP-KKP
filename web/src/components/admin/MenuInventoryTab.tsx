@@ -1,6 +1,7 @@
 "use client";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle2, FolderPlus, Layers, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Archive, ArchiveRestore, ChevronDown, Layers, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { DishImage } from "@/components/shared/DishImage";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,33 +9,35 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { useSocket } from "@/hooks/useSocket";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { EVENTS } from "@/lib/events";
 import { errorMessage, toggleAvailability } from "@/lib/staffActions";
 import type { Category, MenuItem } from "@/lib/types";
 import { cn, formatINR } from "@/lib/utils";
 import { useStaffStore } from "@/store/useStaffStore";
-import { CategoryFormDialog } from "./CategoryFormDialog";
-import { ItemFormDialog } from "./ItemFormDialog";
+import { toast } from "@/store/useToastStore";
+import { CategoryManager } from "./CategoryManager";
+import { MenuItemModal } from "./MenuItemModal";
 
 export function MenuInventoryTab() {
   const staffKey = useStaffStore((s) => s.key);
-  const [categories, setCategories] = useState<Category[]>([]);
+  /** everything incl. archived rows (staff view) */
+  const [all, setAll] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [pending, setPending] = useState<ReadonlySet<number>>(new Set());
   const [query, setQuery] = useState("");
-  const [notice, setNotice] = useState<string | null>(null);
-  const [itemDialog, setItemDialog] = useState<{ open: boolean; item: MenuItem | null; categoryId?: number }>({ open: false, item: null });
-  const [catDialog, setCatDialog] = useState<{ open: boolean; category: Category | null }>({ open: false, category: null });
-  const noticeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const [selectedCat, setSelectedCat] = useState<number | null>(null);
+  const [modal, setModal] = useState<{ item: MenuItem | null; categoryId?: number } | null>(null);
+  const [toDelete, setToDelete] = useState<MenuItem | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      setCategories((await api.menu()).categories);
-      setError(null);
+      setAll((await api.menuWithArchived()).categories);
+      setLoadError(null);
     } catch (e) {
-      setError(errorMessage(e, "Failed to load menu"));
+      setLoadError(errorMessage(e, "Failed to load the menu"));
     } finally {
       setLoading(false);
     }
@@ -42,40 +45,37 @@ export function MenuInventoryTab() {
 
   useEffect(() => {
     void load();
-    return () => clearTimeout(noticeTimer.current);
   }, [load]);
 
-  const patchItem = (id: number, patch: Partial<MenuItem>) =>
-    setCategories((cats) => cats.map((c) => ({ ...c, items: c.items.map((i) => (i.id === id ? { ...i, ...patch } : i)) })));
+  /** live categories with only live dishes — what guests see */
+  const categories = useMemo(
+    () => all.filter((c) => !c.archived_at).map((c) => ({ ...c, items: c.items.filter((i) => !i.archived_at) })),
+    [all],
+  );
+  const archived = useMemo(() => all.flatMap((c) => c.items.filter((i) => i.archived_at).map((i) => ({ ...i, categoryName: c.name_en }))), [all]);
 
-  // Other admin screens stay in sync too
+  const patchItem = (id: number, patch: Partial<MenuItem>) =>
+    setAll((cats) => cats.map((c) => ({ ...c, items: c.items.map((i) => (i.id === id ? { ...i, ...patch } : i)) })));
+
+  // other admin screens / tabs stay in sync
   useSocket(
     { role: "admin", staffKey },
     {
-      [EVENTS.MENU_AVAILABILITY_TOGGLED]: (p: { menu_item_id: number; is_available: boolean }) =>
-        patchItem(p.menu_item_id, { is_available: p.is_available }),
+      [EVENTS.MENU_AVAILABILITY_TOGGLED]: (p: { menu_item_id: number; is_available: boolean }) => patchItem(p.menu_item_id, { is_available: p.is_available }),
       [EVENTS.MENU_UPDATED]: () => void load(),
     },
     load,
   );
 
-  const flash = (msg: string) => {
-    setNotice(msg);
-    clearTimeout(noticeTimer.current);
-    noticeTimer.current = setTimeout(() => setNotice(null), 2500);
-  };
-
-  /** Optimistic: flip locally, send `menu:toggle_availability`, roll back if the server refuses. */
   const toggle = async (item: MenuItem, value: boolean) => {
     patchItem(item.id, { is_available: value });
     setPending((p) => new Set(p).add(item.id));
-    const started = performance.now();
     try {
       await toggleAvailability(item.id, value);
-      flash(`${item.name_en} is now ${value ? "available" : "out of stock"} on every guest phone (${Math.round(performance.now() - started)} ms)`);
+      toast.success(`${item.name_en} is now ${value ? "in stock" : "out of stock"}`, "Updated on every guest phone.");
     } catch (e) {
       patchItem(item.id, { is_available: !value });
-      setError(errorMessage(e, "Toggle failed"));
+      toast.error(`Couldn't update ${item.name_en}`, e);
     } finally {
       setPending((p) => {
         const n = new Set(p);
@@ -86,35 +86,41 @@ export function MenuInventoryTab() {
   };
 
   const removeItem = async (item: MenuItem) => {
-    if (!confirm(`Delete "${item.name_en}"? This cannot be undone.`)) return;
     try {
-      await api.deleteItem(item.id);
+      const res = await api.deleteItem(item.id);
+      if (res.mode === "archived") {
+        toast.success(`“${item.name_en}” archived`, `It appears on ${res.order_lines} past order line${res.order_lines === 1 ? "" : "s"}, so it was hidden instead of erased — sales history stays intact. Restore it any time below.`);
+      } else {
+        toast.success(`“${item.name_en}” deleted`);
+      }
+      setToDelete(null);
       await load();
     } catch (e) {
-      setError(errorMessage(e, "Delete failed"));
+      toast.error(`Couldn't delete “${item.name_en}”`, e instanceof ApiError ? e.message : e);
+      setToDelete(null);
     }
   };
 
-  const removeCategory = async (c: Category) => {
-    if (!confirm(`Delete category "${c.name_en}"?`)) return;
+  const restore = async (item: MenuItem) => {
     try {
-      await api.deleteCategory(c.id);
+      await api.restoreItem(item.id);
+      toast.success(`“${item.name_en}” restored`, "It's back on the menu as Out of stock — switch it on when ready.");
       await load();
     } catch (e) {
-      setError(errorMessage(e, "Delete failed"));
+      toast.error(`Couldn't restore “${item.name_en}”`, e);
     }
   };
 
-  const filtered = useMemo(() => {
+  const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return categories;
     return categories
-      .map((c) => ({ ...c, items: c.items.filter((i) => `${i.name_en} ${i.name_te}`.toLowerCase().includes(q)) }))
-      .filter((c) => c.items.length);
-  }, [categories, query]);
+      .filter((c) => selectedCat === null || c.id === selectedCat)
+      .map((c) => ({ ...c, items: q ? c.items.filter((i) => `${i.name_en} ${i.name_te}`.toLowerCase().includes(q)) : c.items }))
+      .filter((c) => c.items.length > 0 || (!q && selectedCat === c.id));
+  }, [categories, query, selectedCat]);
 
-  const all = categories.flatMap((c) => c.items);
-  const outCount = all.filter((i) => !i.is_available).length;
+  const dishes = categories.flatMap((c) => c.items);
+  const outCount = dishes.filter((i) => !i.is_available).length;
 
   if (loading) return <div className="flex h-96 items-center justify-center"><Spinner className="size-10" /></div>;
 
@@ -124,136 +130,164 @@ export function MenuInventoryTab() {
         <div className="mr-auto">
           <h1 className="text-2xl font-extrabold">Menu & Inventory</h1>
           <p className="text-sm text-muted-foreground">
-            {all.length} dishes · <span className={cn(outCount > 0 && "font-bold text-destructive")}>{outCount} out of stock</span> · toggles reach every guest phone instantly
+            {dishes.length} dishes in {categories.length} categories · <span className={cn(outCount > 0 && "font-bold text-destructive")}>{outCount} out of stock</span> · every change goes live instantly
           </p>
         </div>
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input className="w-64 pl-9" placeholder="Find a dish…" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Find a dish" />
         </div>
-        <Button variant="outline" onClick={() => setCatDialog({ open: true, category: null })}>
-          <FolderPlus /> Category
-        </Button>
-        <Button onClick={() => setItemDialog({ open: true, item: null })} disabled={!categories.length}>
+        <Button onClick={() => setModal({ item: null, categoryId: selectedCat ?? undefined })} disabled={!categories.length}>
           <Plus /> Add New Dish
         </Button>
       </div>
 
-      {error && (
+      {loadError && (
         <div role="alert" className="flex justify-between rounded-lg bg-destructive/10 px-4 py-2 text-sm font-semibold text-destructive">
-          {error}
-          <button onClick={() => setError(null)} className="underline">Dismiss</button>
-        </div>
-      )}
-      {notice && (
-        <div role="status" className="fixed bottom-6 right-6 z-40 flex animate-pop items-center gap-2 rounded-xl bg-foreground px-4 py-3 text-sm font-semibold text-background shadow-xl">
-          <CheckCircle2 className="size-4 text-success" /> {notice}
+          {loadError}
+          <button onClick={() => void load()} className="underline">Retry</button>
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
-        <table className="w-full min-w-[860px] text-sm">
-          <thead className="sticky top-0 bg-card">
-            <tr className="border-b text-left text-xs uppercase tracking-wider text-muted-foreground">
-              <th className="py-3 pl-4 font-semibold">Name (EN + TE)</th>
-              <th className="py-3 font-semibold">Category</th>
-              <th className="py-3 pr-6 text-right font-semibold">Price</th>
-              <th className="py-3 font-semibold">Combo</th>
-              <th className="py-3 font-semibold">Live availability</th>
-              <th className="py-3 pr-4 text-right font-semibold"><span className="sr-only">Actions</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 && (
-              <tr><td colSpan={6} className="py-12 text-center text-muted-foreground">No dishes match “{query}”.</td></tr>
-            )}
-            {filtered.map((c) => (
-              <Fragment key={c.id}>
-                <tr className="border-b bg-muted/50">
-                  <th colSpan={6} scope="colgroup" className="px-4 py-2 text-left">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold">{c.name_en}</span>
-                      <span className="font-normal text-muted-foreground">· {c.name_te}</span>
-                      <span className="text-xs font-normal text-muted-foreground">({c.items.length})</span>
-                      <div className="ml-auto flex gap-1">
-                        <Button size="sm" variant="ghost" onClick={() => setItemDialog({ open: true, item: null, categoryId: c.id })}><Plus /> Dish</Button>
-                        <Button size="icon" variant="ghost" aria-label={`Edit category ${c.name_en}`} onClick={() => setCatDialog({ open: true, category: c })}><Pencil /></Button>
-                        <Button size="icon" variant="ghost" aria-label={`Delete category ${c.name_en}`} onClick={() => void removeCategory(c)}><Trash2 /></Button>
-                      </div>
-                    </div>
-                  </th>
+      <div className="grid items-start gap-5 lg:grid-cols-[300px_1fr]">
+        <CategoryManager categories={categories} selectedId={selectedCat} onSelect={setSelectedCat} onChanged={() => void load()} />
+
+        <div className="space-y-5">
+          <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
+            <table className="w-full min-w-[820px] text-sm">
+              <thead>
+                <tr className="border-b text-left text-xs uppercase tracking-wider text-muted-foreground">
+                  <th className="py-3 pl-4 font-semibold">Dish (EN + TE)</th>
+                  <th className="py-3 pr-6 text-right font-semibold">Price</th>
+                  <th className="py-3 font-semibold">Combo</th>
+                  <th className="py-3 font-semibold">Live availability</th>
+                  <th className="py-3 pr-4 text-right font-semibold">Actions</th>
                 </tr>
-                {c.items.length === 0 && (
-                  <tr className="border-b"><td colSpan={6} className="py-4 text-center text-muted-foreground">No dishes yet.</td></tr>
+              </thead>
+              <tbody>
+                {visible.length === 0 && (
+                  <tr><td colSpan={5} className="py-12 text-center text-muted-foreground">{query ? `No dishes match “${query}”.` : "No dishes yet — add your first one."}</td></tr>
                 )}
-                {c.items.map((i) => (
-                  <tr key={i.id} className={cn("border-b transition-colors last:border-0", !i.is_available && "bg-destructive/5")}>
-                    <td className="py-2 pl-4">
-                      <div className="flex items-center gap-3">
-                        <DishImage src={i.image_url} className={cn("size-11 shrink-0 rounded-lg text-base", !i.is_available && "grayscale")} />
-                        <div>
-                          <p className="font-semibold">{i.name_en}</p>
-                          <p className="text-muted-foreground" lang="te">{i.name_te}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-2 text-muted-foreground">{c.name_en}</td>
-                    <td className="py-2 pr-6 text-right font-bold tabular-nums">{formatINR(i.price)}</td>
-                    <td className="py-2">
-                      {i.is_combo ? (
-                        <Badge variant="accent"><Layers className="size-3" /> {i.combo_steps.length}-step combo</Badge>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </td>
-                    <td className="py-2">
-                      <label className="flex w-fit cursor-pointer items-center gap-2">
-                        <Switch
-                          checked={i.is_available}
-                          disabled={pending.has(i.id)}
-                          onCheckedChange={(v) => void toggle(i, v)}
-                          aria-label={`Availability for ${i.name_en}`}
-                        />
-                        <span className={cn("w-24 text-xs font-bold", i.is_available ? "text-success" : "text-destructive")}>
-                          {i.is_available ? "In stock" : "Out of stock"}
-                        </span>
-                      </label>
-                    </td>
-                    <td className="py-2 pr-4 text-right">
-                      <Button size="icon" variant="ghost" aria-label={`Edit ${i.name_en}`} onClick={() => setItemDialog({ open: true, item: i })}><Pencil /></Button>
-                      <Button size="icon" variant="ghost" aria-label={`Delete ${i.name_en}`} onClick={() => void removeItem(i)}><Trash2 /></Button>
-                    </td>
-                  </tr>
+                {visible.map((c) => (
+                  <CategoryRows key={c.id} category={c} pending={pending} onToggle={toggle} onEdit={(i) => setModal({ item: i })} onDelete={setToDelete} onAdd={() => setModal({ item: null, categoryId: c.id })} />
                 ))}
-              </Fragment>
-            ))}
-          </tbody>
-        </table>
+              </tbody>
+            </table>
+          </div>
+
+          {archived.length > 0 && (
+            <section className="rounded-xl border bg-card shadow-sm">
+              <button onClick={() => setShowArchived((v) => !v)} aria-expanded={showArchived} className="flex w-full items-center gap-2 px-4 py-3 text-left font-semibold">
+                <Archive className="size-4 text-muted-foreground" /> Archived dishes ({archived.length})
+                <span className="text-xs font-normal text-muted-foreground">— hidden from guests, kept for order history</span>
+                <ChevronDown className={cn("ml-auto size-4 transition-transform", showArchived && "rotate-180")} />
+              </button>
+              {showArchived && (
+                <ul className="divide-y border-t">
+                  {archived.map((i) => (
+                    <li key={i.id} className="flex items-center gap-3 px-4 py-2 text-sm">
+                      <DishImage src={i.image_url} className="size-9 shrink-0 rounded-lg text-sm grayscale" />
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-muted-foreground line-through decoration-1">{i.name_en}</p>
+                        <p className="text-xs text-muted-foreground">{i.categoryName} · archived {new Date(i.archived_at!).toLocaleDateString("en-IN")}</p>
+                      </div>
+                      <Button size="sm" variant="outline" onClick={() => void restore(i)}><ArchiveRestore /> Restore</Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
+        </div>
       </div>
 
-      <ItemFormDialog
-        open={itemDialog.open}
-        item={itemDialog.item}
+      <MenuItemModal
+        state={modal}
         categories={categories}
-        defaultCategoryId={itemDialog.categoryId}
-        onClose={() => setItemDialog({ open: false, item: null })}
-        onSaved={() => {
-          const created = !itemDialog.item;
-          setItemDialog({ open: false, item: null });
+        onClose={() => setModal(null)}
+        onSaved={(item, mode) => {
+          setModal(null);
+          toast.success(mode === "created" ? `“${item.name_en}” added to the menu` : `“${item.name_en}” saved`, "Guest menus refresh automatically.");
           void load();
-          flash(created ? "Dish added — it's live on the guest menu" : "Dish updated");
         }}
       />
-      <CategoryFormDialog
-        open={catDialog.open}
-        category={catDialog.category}
-        nextSortOrder={(categories.at(-1)?.sort_order ?? 0) + 10}
-        onClose={() => setCatDialog({ open: false, category: null })}
-        onSaved={() => {
-          setCatDialog({ open: false, category: null });
-          void load();
-        }}
+      <ConfirmDialog
+        open={Boolean(toDelete)}
+        title={`Delete “${toDelete?.name_en ?? ""}”?`}
+        description={
+          <>
+            <p>It disappears from every guest menu immediately.</p>
+            <p>If it was ever ordered, it is <b>archived</b> instead of erased, so past bills and sales analytics stay correct. You can restore archived dishes later.</p>
+          </>
+        }
+        confirmLabel="Delete dish"
+        destructive
+        onConfirm={() => (toDelete ? removeItem(toDelete) : undefined)}
+        onClose={() => setToDelete(null)}
       />
     </div>
+  );
+}
+
+function CategoryRows({
+  category: c,
+  pending,
+  onToggle,
+  onEdit,
+  onDelete,
+  onAdd,
+}: {
+  category: Category;
+  pending: ReadonlySet<number>;
+  onToggle: (i: MenuItem, v: boolean) => void;
+  onEdit: (i: MenuItem) => void;
+  onDelete: (i: MenuItem) => void;
+  onAdd: () => void;
+}) {
+  return (
+    <>
+      <tr className="border-b bg-muted/50">
+        <th colSpan={5} scope="colgroup" className="px-4 py-2 text-left">
+          <div className="flex items-center gap-2">
+            <span className="font-bold">{c.name_en}</span>
+            <span className="font-normal text-muted-foreground" lang="te">· {c.name_te}</span>
+            <span className="text-xs font-normal text-muted-foreground">({c.items.length})</span>
+            <Button size="sm" variant="ghost" className="ml-auto" onClick={onAdd}><Plus /> Dish</Button>
+          </div>
+        </th>
+      </tr>
+      {c.items.length === 0 && (
+        <tr className="border-b"><td colSpan={5} className="py-4 text-center text-muted-foreground">No dishes in this category yet.</td></tr>
+      )}
+      {c.items.map((i) => (
+        <tr key={i.id} data-dish={i.name_en} className={cn("border-b transition-colors last:border-0", !i.is_available && "bg-destructive/5")}>
+          <td className="py-2 pl-4">
+            <div className="flex items-center gap-3">
+              <DishImage src={i.image_url} className={cn("size-11 shrink-0 rounded-lg text-base", !i.is_available && "grayscale")} />
+              <div>
+                <p className="font-semibold">{i.name_en}</p>
+                <p className="text-muted-foreground" lang="te">{i.name_te}</p>
+              </div>
+            </div>
+          </td>
+          <td className="py-2 pr-6 text-right font-bold tabular-nums">{formatINR(i.price)}</td>
+          <td className="py-2">
+            {i.is_combo ? <Badge variant="accent"><Layers className="size-3" /> {i.combo_steps.length}-step combo</Badge> : <span className="text-xs text-muted-foreground">—</span>}
+          </td>
+          <td className="py-2">
+            <label className="flex w-fit cursor-pointer items-center gap-2">
+              <Switch checked={i.is_available} disabled={pending.has(i.id)} onCheckedChange={(v) => onToggle(i, v)} aria-label={`Availability for ${i.name_en}`} />
+              <span className={cn("w-24 text-xs font-bold", i.is_available ? "text-success" : "text-destructive")}>{i.is_available ? "In stock" : "Out of stock"}</span>
+            </label>
+          </td>
+          <td className="py-2 pr-4">
+            <div className="flex justify-end gap-1">
+              <Button size="sm" variant="outline" onClick={() => onEdit(i)} aria-label={`Edit ${i.name_en}`}><Pencil /> Edit</Button>
+              <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/10" onClick={() => onDelete(i)} aria-label={`Delete ${i.name_en}`}><Trash2 /> Delete</Button>
+            </div>
+          </td>
+        </tr>
+      ))}
+    </>
   );
 }
