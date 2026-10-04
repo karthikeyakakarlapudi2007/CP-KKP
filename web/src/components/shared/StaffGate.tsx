@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FullScreenLoader } from "@/components/ui/spinner";
 import { api } from "@/lib/api";
-import { useStaffStore } from "@/stores/staff";
+import { useStaffStore } from "@/store/useStaffStore";
 import { ErrorView } from "./ErrorView";
 
 /**

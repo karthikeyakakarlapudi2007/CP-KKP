@@ -21,7 +21,8 @@ export type Ack<T = unknown> = (
   res: { ok: true; data: T } | { ok: false; status: number; error: string; details?: unknown },
 ) => void;
 
-type SocketData = { staffRole?: "admin" | "kds"; orderTimes: number[] };
+type StaffRole = "admin" | "kds";
+type SocketData = { staffRoles: Set<StaffRole>; orderTimes: number[] };
 type GatewaySocket = Socket<Record<string, never>, Record<string, never>, Record<string, never>, SocketData>;
 
 /** Same budget as the REST order limiter: 20 orders per minute per connection. */
@@ -57,8 +58,8 @@ function command<T>(
   }) as never);
 }
 
-function requireStaffSocket(socket: GatewaySocket, roles: ("admin" | "kds")[]) {
-  if (!socket.data.staffRole || !roles.includes(socket.data.staffRole)) {
+function requireStaffSocket(socket: GatewaySocket, roles: StaffRole[]) {
+  if (!roles.some((r) => socket.data.staffRoles.has(r))) {
     throw new HttpError(401, `Join as ${roles.join(" or ")} first`);
   }
 }
@@ -75,6 +76,7 @@ export function initSocket(server: HttpServer) {
   io.on("connection", (raw) => {
     const socket = raw as unknown as GatewaySocket;
     socket.data.orderTimes = [];
+    socket.data.staffRoles = new Set();
 
     /** join → rooms: `table:<n>` for guests, `admin` / `kds` for staff (staff key checked). */
     command(socket, EVENTS.JOIN, async (payload) => {
@@ -86,8 +88,20 @@ export function initSocket(server: HttpServer) {
         return { room: ROOMS.table(join.table) };
       }
       if (!isValidStaffKey(join.staffKey)) throw new HttpError(401, "unauthorized");
-      socket.data.staffRole = join.role;
+      socket.data.staffRoles.add(join.role);
       await socket.join(join.role === "admin" ? ROOMS.admin : ROOMS.kds);
+      return { room: join.role };
+    });
+
+    /** leave → drop a room (e.g. the same browser tab moves to another table). */
+    command(socket, EVENTS.LEAVE, async (payload) => {
+      const join = socketJoinSchema.parse(payload);
+      if (join.role === "customer") {
+        await socket.leave(ROOMS.table(join.table));
+        return { room: ROOMS.table(join.table) };
+      }
+      await socket.leave(join.role);
+      socket.data.staffRoles.delete(join.role);
       return { room: join.role };
     });
 

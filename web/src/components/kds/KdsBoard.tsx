@@ -9,7 +9,7 @@ import { playChime, unlockAudio } from "@/lib/chime";
 import { EVENTS } from "@/lib/events";
 import type { Order } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { useStaffStore } from "@/stores/staff";
+import { useStaffStore } from "@/store/useStaffStore";
 import { KdsTicket } from "./KdsTicket";
 
 const KITCHEN_STATUSES = new Set(["pending", "preparing"]);

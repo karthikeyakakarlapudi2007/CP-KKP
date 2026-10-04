@@ -1,21 +1,37 @@
 "use client";
-import { Languages } from "lucide-react";
-import { useLang } from "@/stores/lang";
+import { useCustomerStore } from "@/store/useCustomerStore";
 import { cn } from "@/lib/utils";
 
+/** EN | తె pill — flips every label, dish name and button instantly. */
 export function LangToggle({ className }: { className?: string }) {
-  const { lang, setLang } = useLang();
+  const language = useCustomerStore((s) => s.language);
+  const setLanguage = useCustomerStore((s) => s.setLanguage);
   return (
-    <div className={cn("flex items-center rounded-full border bg-card p-0.5 text-xs font-bold shadow-sm", className)} role="group" aria-label="Language">
-      <Languages className="mx-1.5 size-3.5 text-muted-foreground" />
-      {(["en", "te"] as const).map((l) => (
+    <div role="group" aria-label="Language / భాష" className={cn("relative flex rounded-full bg-muted p-1 text-sm font-bold", className)}>
+      <span
+        aria-hidden
+        className={cn(
+          "absolute inset-y-1 left-1 w-[calc(50%-4px)] rounded-full bg-primary shadow transition-transform duration-300",
+          language === "te" && "translate-x-full",
+        )}
+      />
+      {(
+        [
+          { id: "en", label: "EN", full: "English" },
+          { id: "te", label: "తె", full: "తెలుగు" },
+        ] as const
+      ).map((l) => (
         <button
-          key={l}
-          onClick={() => setLang(l)}
-          aria-pressed={lang === l}
-          className={cn("rounded-full px-3 py-1.5 transition", lang === l ? "bg-primary text-primary-foreground" : "text-muted-foreground")}
+          key={l.id}
+          onClick={() => setLanguage(l.id)}
+          aria-pressed={language === l.id}
+          aria-label={l.full}
+          className={cn(
+            "relative z-10 min-w-11 rounded-full px-3 py-1.5 transition-colors",
+            language === l.id ? "text-primary-foreground" : "text-muted-foreground",
+          )}
         >
-          {l === "en" ? "English" : "తెలుగు"}
+          {l.label}
         </button>
       ))}
     </div>

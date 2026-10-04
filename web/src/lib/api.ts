@@ -1,5 +1,5 @@
 import { API_URL } from "./config";
-import { useStaffStore } from "@/stores/staff";
+import { useStaffStore } from "@/store/useStaffStore";
 import type { AnalyticsSummary, Category, ComboStep, Order, TableStatus, TableSummary } from "./types";
 
 export class ApiError extends Error {

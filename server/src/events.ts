@@ -3,6 +3,8 @@ export const EVENTS = {
   /* ---- client -> server commands (each replies through a Socket.IO ack) ---- */
   /** join role-specific rooms: { role: "customer", table } | { role: "admin" | "kds", staffKey } */
   JOIN: "join",
+  /** leave a room joined earlier (same payload as join) */
+  LEAVE: "leave",
   /** guest places an order (public) */
   ORDER_CREATE: "order:create",
   /** staff advances / pays / cancels an order (admin or kds sockets only) */

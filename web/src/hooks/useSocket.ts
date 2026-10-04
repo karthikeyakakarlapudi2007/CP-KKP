@@ -1,16 +1,13 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { io, type Socket } from "socket.io-client";
-import { API_URL } from "@/lib/config";
-import { EVENTS } from "@/lib/events";
+import { getSocket, joinRoom, type JoinPayload } from "@/lib/socketClient";
 
-type JoinPayload = { role: "customer"; table: number } | { role: "admin" | "kds"; staffKey?: string };
 type Handlers = Record<string, (payload: any) => void>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
 /**
- * Connects to the realtime gateway, joins the role's room (re-joining after every reconnect)
- * and dispatches events to the latest handlers without re-subscribing on each render.
- * `onReconnect` lets screens refetch state they may have missed while offline.
+ * Joins a room on the shared socket for the component's lifetime and routes events to the
+ * latest handlers (no re-subscribe per render). `onReconnect` lets screens refetch anything
+ * they may have missed while offline.
  */
 export function useSocket(join: JoinPayload | null, handlers: Handlers, onReconnect?: () => void) {
   const [connected, setConnected] = useState(false);
@@ -22,22 +19,24 @@ export function useSocket(join: JoinPayload | null, handlers: Handlers, onReconn
 
   useEffect(() => {
     if (!joinKey) return;
-    const payload = JSON.parse(joinKey) as JoinPayload;
-    const socket: Socket = io(API_URL, { transports: ["websocket", "polling"], reconnectionDelayMax: 5000 });
-    let firstConnect = true;
+    const socket = getSocket();
+    const leave = joinRoom(JSON.parse(joinKey) as JoinPayload);
+    const dispatch = (event: string, data: unknown) => handlersRef.current[event]?.(data);
+    const onConnect = () => setConnected(true);
+    const onDisconnect = () => setConnected(false);
+    const onReconnected = () => reconnectRef.current?.();
 
-    socket.on("connect", () => {
-      socket.emit(EVENTS.JOIN, payload, () => undefined);
-      setConnected(true);
-      if (!firstConnect) reconnectRef.current?.();
-      firstConnect = false;
-    });
-    socket.on("disconnect", () => setConnected(false));
-    socket.onAny((event: string, data: unknown) => handlersRef.current[event]?.(data));
-
+    setConnected(socket.connected);
+    socket.onAny(dispatch);
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
+    socket.io.on("reconnect", onReconnected);
     return () => {
-      socket.removeAllListeners();
-      socket.disconnect();
+      leave();
+      socket.offAny(dispatch);
+      socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
+      socket.io.off("reconnect", onReconnected);
     };
   }, [joinKey]);
 

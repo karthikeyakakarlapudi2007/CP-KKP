@@ -1,7 +1,7 @@
 import type { Lang, SelectedStep } from "@/lib/types";
 import { pick } from "@/lib/utils";
 
-/** Compact "Base: Bagara Rice · Curry: Natu Kodi" breakdown for carts and order tracking. */
+/** "Select Base: Bagara Rice · Select Curry: Royyala Iguru" breakdown for cart and tracking views. */
 export function ComboSummary({ steps, lang, className }: { steps?: SelectedStep[] | null; lang: Lang; className?: string }) {
   if (!steps?.length) return null;
   return (

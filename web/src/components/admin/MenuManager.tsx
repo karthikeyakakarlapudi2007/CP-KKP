@@ -12,7 +12,7 @@ import { api, ApiError } from "@/lib/api";
 import { EVENTS } from "@/lib/events";
 import type { Category, MenuItem } from "@/lib/types";
 import { cn, formatINR } from "@/lib/utils";
-import { useStaffStore } from "@/stores/staff";
+import { useStaffStore } from "@/store/useStaffStore";
 import { CategoryFormDialog } from "./CategoryFormDialog";
 import { ItemFormDialog } from "./ItemFormDialog";
 

@@ -47,7 +47,7 @@ const SPECIAL_COMBO_STEPS: Step[] = [
   },
   {
     step_number: 2,
-    step_title_en: "Choose Curry",
+    step_title_en: "Select Curry",
     step_title_te: "కూర ఎంచుకోండి",
     options: [
       { id: "curry_natu_kodi_pulusu", name_en: "Natu Kodi Pulusu", name_te: "నాటు కోడి పులుసు", additional_price: 0 },

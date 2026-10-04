@@ -23,14 +23,14 @@ type ContentProps = React.ComponentPropsWithoutRef<typeof DialogPrimitive.Conten
 export const DialogContent = React.forwardRef<React.ElementRef<typeof DialogPrimitive.Content>, ContentProps>(
   ({ className, children, side = "center", hideClose, ...props }, ref) => (
     <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px]" />
+      <DialogPrimitive.Overlay className="fixed inset-0 z-50 animate-fade-in bg-black/50 backdrop-blur-[2px]" />
       <DialogPrimitive.Content
         ref={ref}
         className={cn(
           "fixed z-50 flex flex-col bg-card text-card-foreground shadow-2xl focus:outline-none",
           side === "center" &&
-            "left-1/2 top-1/2 max-h-[90dvh] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-2xl",
-          side === "bottom" && "inset-x-0 bottom-0 mx-auto max-h-[92dvh] w-full max-w-lg rounded-t-3xl",
+            "inset-x-4 top-1/2 mx-auto max-h-[90dvh] max-w-lg -translate-y-1/2 rounded-2xl [&>*]:animate-pop",
+          side === "bottom" && "inset-x-0 bottom-0 mx-auto max-h-[92dvh] w-full max-w-lg animate-slide-up rounded-t-3xl",
           className,
         )}
         {...props}

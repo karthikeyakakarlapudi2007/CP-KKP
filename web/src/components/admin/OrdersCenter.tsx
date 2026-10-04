@@ -11,7 +11,7 @@ import { playAlert, playChime, unlockAudio } from "@/lib/chime";
 import { EVENTS } from "@/lib/events";
 import type { Order, OrderStatus, TableSummary } from "@/lib/types";
 import { cn, formatINR } from "@/lib/utils";
-import { useStaffStore } from "@/stores/staff";
+import { useStaffStore } from "@/store/useStaffStore";
 import { OrderCard } from "./OrderCard";
 import { TableFloor } from "./TableFloor";
 

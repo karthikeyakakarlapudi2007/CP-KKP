@@ -53,12 +53,13 @@ server/
 web/
   src/app/                    # Routes: /t/[tableId], /admin/*, /kds (+ error boundaries)
   src/components/ui/          # Button, Badge, Card, Input, Switch, Dialog, Spinner (shadcn-style)
-  src/components/customer/    # CustomerApp, MenuItemCard, ComboBuilder, CartBar, CartDrawer, OrderTracker
+  src/components/customer/    # CustomerApp, CustomerHeader, CategoryNav (scroll-spy), MenuItemCard,
+                              # ComboBuilderModal, CartDrawer (sticky bar + slide-up drawer), OrderTracker
   src/components/admin/       # OrdersCenter, TableFloor, MenuManager, ItemFormDialog, Analytics, QrSheet
   src/components/kds/         # KdsBoard, KdsTicket
-  src/stores/                 # Zustand: cart (persisted per table), language, staff key
-  src/hooks/                  # useSocket (auto re-join + refetch on reconnect), useNow
-  src/lib/                    # api client, i18n dictionary, types, chime (HTML5 Audio)
+  src/store/                  # Zustand: useCustomerStore (table, language, cart, activeOrder), useStaffStore
+  src/hooks/                  # useSocket (rooms on the shared socket + refetch on reconnect), useTranslation, useNow
+  src/lib/                    # socketClient (singleton + acked commands), translations (EN/తెలుగు), api, types, chime
 ```
 
 ## Local development
