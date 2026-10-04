@@ -1,5 +1,5 @@
 "use client";
-import { ClipboardList, UtensilsCrossed, WifiOff } from "lucide-react";
+import { ClipboardList, UtensilsCrossed } from "lucide-react";
 import { useTranslation } from "@/hooks/useTranslation";
 import { cn } from "@/lib/utils";
 import { LangToggle } from "./LangToggle";
@@ -9,10 +9,9 @@ type Props = {
   view: "menu" | "status";
   onViewChange: (v: "menu" | "status") => void;
   hasActiveOrder: boolean;
-  connected: boolean;
 };
 
-export function CustomerHeader({ tableNumber, view, onViewChange, hasActiveOrder, connected }: Props) {
+export function CustomerHeader({ tableNumber, view, onViewChange, hasActiveOrder }: Props) {
   const { t } = useTranslation();
   return (
     <div className="bg-background">
@@ -49,11 +48,6 @@ export function CustomerHeader({ tableNumber, view, onViewChange, hasActiveOrder
         </div>
       )}
 
-      {!connected && (
-        <div role="status" className="flex items-center justify-center gap-2 bg-amber-100 py-1 text-xs font-semibold text-amber-900">
-          <WifiOff className="size-3" /> {t("offline")}
-        </div>
-      )}
     </div>
   );
 }

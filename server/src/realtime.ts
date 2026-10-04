@@ -13,6 +13,10 @@ export const broadcast = {
   orderCreated(order: { table_number: number }) {
     io?.to([ROOMS.admin, ROOMS.kds, ROOMS.table(order.table_number)]).emit(EVENTS.ORDER_CREATED, order);
   },
+  /** Round 2+ ticket for a table that is mid-meal → same audience, distinct event so the KDS can flag it */
+  orderAddonCreated(order: { table_number: number }) {
+    io?.to([ROOMS.admin, ROOMS.kds, ROOMS.table(order.table_number)]).emit(EVENTS.ORDER_ADDON_CREATED, order);
+  },
   /** Status progression → the guest's table + kitchen (+ dashboard so its kanban moves) */
   orderStatusChanged(order: { table_number: number }) {
     io?.to([ROOMS.table(order.table_number), ROOMS.kds, ROOMS.admin]).emit(EVENTS.ORDER_STATUS_CHANGED, order);

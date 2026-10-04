@@ -1,11 +1,12 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { BellRing, Clock, Users, Wifi, WifiOff } from "lucide-react";
+import { BellRing, Clock, Printer, Users, Wifi, WifiOff } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { useNow } from "@/hooks/useNow";
 import { useSocket } from "@/hooks/useSocket";
 import { api } from "@/lib/api";
+import { amountPayable } from "@/lib/billing";
 import { EVENTS } from "@/lib/events";
 import { errorMessage, updateOrderStatus, type StaffStatus } from "@/lib/staffActions";
 import type { Order, OrderStatus, TableStatus, TableSummary } from "@/lib/types";
@@ -13,6 +14,7 @@ import { cn, formatINR, minutesSince } from "@/lib/utils";
 import { useAdminStore } from "@/store/useAdminStore";
 import { useStaffStore } from "@/store/useStaffStore";
 import { OrderCard } from "./OrderCard";
+import { ReceiptDialog } from "./ReceiptDialog";
 import { TableDetailsDrawer } from "./TableDetailsDrawer";
 
 const ACTIVE = new Set<OrderStatus>(["pending", "preparing", "served"]);
@@ -36,6 +38,7 @@ export function LiveOrdersTab() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [settling, setSettling] = useState(false);
+  const [receiptTable, setReceiptTable] = useState<number | null>(null);
   const now = useNow(15_000);
   const refreshTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -73,6 +76,10 @@ export function LiveOrdersTab() {
     { role: "admin", staffKey },
     {
       [EVENTS.ORDER_CREATED]: (o: Order) => {
+        upsert(o);
+        refreshTablesSoon();
+      },
+      [EVENTS.ORDER_ADDON_CREATED]: (o: Order) => {
         upsert(o);
         refreshTablesSoon();
       },
@@ -177,41 +184,57 @@ export function LiveOrdersTab() {
           const tOrders = ordersByTable.get(t.id) ?? [];
           const since = tOrders[0] ? minutesSince(tOrders[0].created_at, now) : null;
           const bill = t.status === "bill_requested";
+          const payable = amountPayable(tOrders);
           return (
-            <button
+            <div
               key={t.id}
-              onClick={() => setOpenTable(t.id)}
-              aria-label={`Table ${t.id}, ${STATUS_LABEL[t.status]}`}
               className={cn(
-                "relative flex min-h-32 flex-col rounded-2xl border-2 p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md",
+                "relative flex min-h-36 flex-col rounded-2xl border-2 p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md",
                 t.status === "vacant" && "border-dashed bg-card text-muted-foreground",
                 t.status === "occupied" && "border-sky-300 bg-sky-50 text-sky-950",
                 bill && "animate-bell-flash border-amber-500 text-amber-950",
               )}
             >
+              {/* whole card opens the running ticket; the bill button sits above this layer */}
+              <button
+                onClick={() => setOpenTable(t.id)}
+                aria-label={`Table ${t.id}, ${STATUS_LABEL[t.status]}`}
+                className="absolute inset-0 z-0 rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
               {bill && (
-                <span className="absolute inset-x-0 top-0 flex items-center justify-center gap-1 rounded-t-xl bg-amber-950 py-1 text-[11px] font-black tracking-wider text-amber-200">
+                <span className="pointer-events-none absolute inset-x-0 top-0 flex items-center justify-center gap-1 rounded-t-xl bg-amber-950 py-1 text-[11px] font-black tracking-wider text-amber-200">
                   <BellRing className="size-3" /> TABLE {t.id} REQUESTED BILL
                 </span>
               )}
-              <div className={cn("flex items-start justify-between", bill && "mt-5")}>
+              <div className={cn("pointer-events-none flex items-start justify-between", bill && "mt-5")}>
                 <span className="text-3xl font-black leading-none">T{t.id}</span>
                 <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-bold", t.status === "vacant" ? "bg-muted" : bill ? "bg-amber-950 text-amber-100" : "bg-sky-200")}>
                   {STATUS_LABEL[t.status]}
                 </span>
               </div>
-              {t.status !== "vacant" || t.amount_due > 0 ? (
-                <div className="mt-auto pt-3">
-                  <p className="text-xl font-extrabold tabular-nums">{formatINR(t.amount_due)}</p>
+              {tOrders.length > 0 ? (
+                <div className="pointer-events-none mt-auto pt-3">
+                  <p className="text-xl font-extrabold tabular-nums">{formatINR(payable)}</p>
                   <p className="flex items-center gap-3 text-xs opacity-80">
-                    <span className="flex items-center gap-1"><Users className="size-3" /> {t.active_orders} ticket{t.active_orders === 1 ? "" : "s"}</span>
+                    <span className="flex items-center gap-1"><Users className="size-3" /> {tOrders.length} ticket{tOrders.length === 1 ? "" : "s"}</span>
                     {since !== null && <span className="flex items-center gap-1"><Clock className="size-3" /> {since}m</span>}
                   </p>
                 </div>
               ) : (
-                <p className="mt-auto pt-3 text-xs">Ready for guests</p>
+                <p className="pointer-events-none mt-auto pt-3 text-xs">Ready for guests</p>
               )}
-            </button>
+              {t.status !== "vacant" && tOrders.length > 0 && (
+                <button
+                  onClick={() => setReceiptTable(t.id)}
+                  className={cn(
+                    "relative z-10 mt-3 flex items-center justify-center gap-1.5 rounded-lg border px-2 py-1.5 text-xs font-bold transition",
+                    bill ? "border-amber-950 bg-amber-950 text-amber-50 hover:bg-amber-900" : "border-sky-400 bg-white hover:bg-sky-100",
+                  )}
+                >
+                  <Printer className="size-3.5" /> Generate Bill / <span lang="te">బిల్ ప్రింట్</span>
+                </button>
+              )}
+            </div>
           );
         })}
       </section>
@@ -241,6 +264,12 @@ export function LiveOrdersTab() {
         settling={settling}
         onClose={() => setOpenTable(null)}
         onSettle={(t) => void settle(t)}
+        onGenerateBill={(t) => setReceiptTable(t.id)}
+      />
+      <ReceiptDialog
+        tableNumber={receiptTable}
+        orders={receiptTable ? ordersByTable.get(receiptTable) ?? [] : []}
+        onClose={() => setReceiptTable(null)}
       />
     </div>
   );

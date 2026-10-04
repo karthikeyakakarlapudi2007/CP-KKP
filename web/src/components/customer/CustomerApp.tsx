@@ -14,6 +14,8 @@ import { toComboSelections, useCustomerStore } from "@/store/useCustomerStore";
 import { CartDrawer } from "./CartDrawer";
 import { CategoryNav } from "./CategoryNav";
 import { ComboBuilderModal } from "./ComboBuilderModal";
+import { ActiveOrderBanner } from "./ActiveOrderBanner";
+import { ConnectionPill } from "./ConnectionPill";
 import { CustomerHeader } from "./CustomerHeader";
 import { MenuItemCard } from "./MenuItemCard";
 import { OrderTracker } from "./OrderTracker";
@@ -85,8 +87,8 @@ export function CustomerApp({ tableRef }: { tableRef: string }) {
     try {
       const table = await api.table(tableRef);
       useCustomerStore.getState().setTableNumber(table.id);
-      const [, orders] = await Promise.all([refreshMenu(), refreshOrders(table.id)]);
-      if (orders.length > 0) setView("status"); // guest re-opened the link mid-meal
+      // an active table order shows as a banner above the menu, so a second guest can add Round 2
+      await Promise.all([refreshMenu(), refreshOrders(table.id)]);
       setState("ready");
     } catch (e) {
       setState(e instanceof ApiError && (e.status === 404 || e.status === 400) ? "invalid-table" : "error");
@@ -108,7 +110,7 @@ export function CustomerApp({ tableRef }: { tableRef: string }) {
 
   /* ---------------- realtime ---------------- */
 
-  const { connected } = useSocket(
+  useSocket(
     tableNumber && state === "ready" ? { role: "customer", table: tableNumber } : null,
     {
       [EVENTS.MENU_AVAILABILITY_TOGGLED]: (p: { menu_item_id: number; is_available: boolean }) =>
@@ -117,6 +119,7 @@ export function CustomerApp({ tableRef }: { tableRef: string }) {
         ),
       [EVENTS.MENU_UPDATED]: () => void refreshMenu().catch(() => undefined),
       [EVENTS.ORDER_CREATED]: (o: Order) => useCustomerStore.getState().applyOrder(o),
+      [EVENTS.ORDER_ADDON_CREATED]: (o: Order) => useCustomerStore.getState().applyOrder(o),
       [EVENTS.ORDER_STATUS_CHANGED]: (o: Order) => {
         const store = useCustomerStore.getState();
         const prev = store.applyOrder(o);
@@ -129,7 +132,9 @@ export function CustomerApp({ tableRef }: { tableRef: string }) {
       },
       [EVENTS.TABLE_BILL_REQUESTED]: () => useCustomerStore.getState().setBillRequested(true),
       [EVENTS.TABLE_STATUS_UPDATED]: (p: { status: TableStatus }) => {
-        if (p.status !== "bill_requested") useCustomerStore.getState().setBillRequested(false);
+        const store = useCustomerStore.getState();
+        if (p.status === "occupied" && store.activeOrder?.billRequested) showToast(translate("billReopened", store.language));
+        if (p.status !== "bill_requested") store.setBillRequested(false);
       },
     },
     () => {
@@ -275,15 +280,22 @@ export function CustomerApp({ tableRef }: { tableRef: string }) {
             window.scrollTo({ top: 0 });
           }}
           hasActiveOrder={Boolean(activeOrder)}
-          connected={connected}
         />
         {view === "menu" && (
           <CategoryNav categories={visibleCategories} activeId={activeCat} onSelect={scrollToCategory} query={query} onQueryChange={setQuery} />
         )}
       </div>
 
+      <ConnectionPill />
+
       {view === "menu" ? (
         <main className="space-y-7 px-4 pb-36 pt-4">
+          <ActiveOrderBanner
+            onTrack={() => {
+              setView("status");
+              window.scrollTo({ top: 0 });
+            }}
+          />
           {visibleCategories.length === 0 && <p className="py-16 text-center text-muted-foreground">{t("noResults")}</p>}
           {visibleCategories.map((c) => (
             <section
@@ -347,7 +359,7 @@ export function CustomerApp({ tableRef }: { tableRef: string }) {
       {toast && (
         <div
           role="status"
-          className="fixed inset-x-4 top-4 z-[60] mx-auto max-w-md animate-pop rounded-xl bg-foreground px-4 py-3 text-sm font-semibold text-background shadow-xl"
+          className="fixed inset-x-4 top-16 z-[60] mx-auto max-w-md animate-pop rounded-xl bg-foreground px-4 py-3 text-sm font-semibold text-background shadow-xl"
         >
           {toast}
         </div>

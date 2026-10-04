@@ -14,7 +14,14 @@ export function OrderCard({ order, now, busy, onAction }: { order: Order; now: n
     <div className={cn("rounded-xl border bg-card p-3 shadow-sm", order.bill_requested && "border-2 border-amber-400 bg-amber-50", late && "border-red-300")}>
       <div className="flex items-start justify-between gap-2">
         <div>
-          <p className="text-lg font-black leading-none">Table {order.table_number}</p>
+          <p className="flex items-center gap-2 text-lg font-black leading-none">
+            Table {order.table_number}
+            {order.round > 1 && (
+              <span className="rounded-full bg-violet-600 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-white">
+                Add-on · R{order.round}
+              </span>
+            )}
+          </p>
           <p className="mt-1 text-xs text-muted-foreground">
             #{order.id.slice(0, 6)} · <span className={cn(late && "font-bold text-destructive")}>{mins === 0 ? "just now" : `${mins} min ago`}</span>
           </p>

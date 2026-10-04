@@ -78,6 +78,9 @@ export function CartDrawer({ open, onOpenChange, placing, error, onPlaceOrder }:
   const orderNotes = useCustomerStore((s) => s.orderNotes);
   const setOrderNotes = useCustomerStore((s) => s.setOrderNotes);
   const tableNumber = useCustomerStore((s) => s.tableNumber);
+  const openOrders = useCustomerStore((s) => s.tableOrders);
+  const nextRound = openOrders.length ? Math.max(...openOrders.map((o) => o.round ?? 1)) + 1 : 1;
+  const isAddon = nextRound > 1;
   const count = cartCount(cart);
   const total = cartTotal(cart);
 
@@ -156,13 +159,24 @@ export function CartDrawer({ open, onOpenChange, placing, error, onPlaceOrder }:
               <span className="font-semibold text-muted-foreground">{t("total")}</span>
               <span className="text-2xl font-black">{formatINR(total)}</span>
             </div>
+            {isAddon && cart.length > 0 && (
+              <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-900">
+                <span className="font-bold">{t("round")} {nextRound}:</span> {t("addonNote")}
+              </p>
+            )}
             {error && (
               <p role="alert" className="animate-pop rounded-lg bg-destructive/10 px-3 py-2 text-sm font-semibold text-destructive">
                 {error}
               </p>
             )}
             <Button size="lg" className="h-13 w-full text-base" disabled={!cart.length || placing} onClick={onPlaceOrder}>
-              {placing ? <><Spinner className="size-5 text-white" /> {t("placing")}</> : t("placeOrder")}
+              {placing ? (
+                <><Spinner className="size-5 text-white" /> {t("placing")}</>
+              ) : isAddon ? (
+                `${t("placeAddon")} · ${t("round")} ${nextRound}`
+              ) : (
+                t("placeOrder")
+              )}
             </Button>
           </div>
         </DialogContent>

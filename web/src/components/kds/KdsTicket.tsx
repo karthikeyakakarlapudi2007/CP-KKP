@@ -1,6 +1,6 @@
 "use client";
 import { memo } from "react";
-import { ChefHat, Clock, HandPlatter, Loader2 } from "lucide-react";
+import { ChefHat, Clock, HandPlatter, Loader2, PlusCircle } from "lucide-react";
 import type { Order } from "@/lib/types";
 import { cn, splitSnapshot } from "@/lib/utils";
 
@@ -31,18 +31,27 @@ export function urgencyOf(createdAt: string, now: number): "ok" | "warn" | "late
 export const KdsTicket = memo(function KdsTicket({ order, now, isNew, busy, onAdvance }: Props) {
   const urgency = urgencyOf(order.created_at, now);
   const preparing = order.status === "preparing";
+  const isAddon = (order.round ?? 1) > 1;
 
   return (
     <article
       aria-label={`Table ${order.table_number}`}
+      data-round={order.round}
       className={cn(
         "flex flex-col overflow-hidden rounded-2xl border-2 bg-slate-900 shadow-xl transition-[border-color,box-shadow] duration-500",
         urgency === "ok" && "border-slate-700",
         urgency === "warn" && "border-orange-500",
         urgency === "late" && "border-red-500 shadow-red-950",
-        isNew && "animate-[kds-glow_1.25s_ease-in-out_infinite] border-sky-400",
+        isAddon && urgency === "ok" && "border-violet-500",
+        isNew && !isAddon && "animate-[kds-glow_1.25s_ease-in-out_infinite] border-sky-400",
+        isNew && isAddon && "animate-[kds-glow-addon_1.25s_ease-in-out_infinite] border-violet-400",
       )}
     >
+      {isAddon && (
+        <div className="flex items-center justify-center gap-2 bg-violet-600 py-1.5 text-sm font-black uppercase tracking-widest text-white">
+          <PlusCircle className="size-4" /> TABLE #{order.table_number} (ADD-ON / ROUND {order.round})
+        </div>
+      )}
       {/* Header: giant table badge + live timer */}
       <header className="flex items-center justify-between gap-2 border-b border-slate-800 bg-slate-950/60 px-4 py-3">
         <span className="flex items-baseline gap-1.5 whitespace-nowrap rounded-xl bg-white px-3 py-1 font-black text-slate-950">
@@ -64,7 +73,7 @@ export const KdsTicket = memo(function KdsTicket({ order, now, isNew, busy, onAd
 
       <div className="flex items-center justify-between px-4 pt-2 text-xs font-bold uppercase tracking-widest">
         <span className="text-slate-500">#{order.id.slice(0, 6)}</span>
-        {isNew && <span className="rounded bg-sky-500 px-1.5 text-slate-950">New</span>}
+        {isNew && <span className={cn("rounded px-1.5", isAddon ? "bg-violet-400 text-slate-950" : "bg-sky-500 text-slate-950")}>{isAddon ? "New add-on" : "New"}</span>}
         <span className={preparing ? "text-sky-400" : "text-slate-400"}>{preparing ? "● Cooking" : "○ Waiting"}</span>
       </div>
 

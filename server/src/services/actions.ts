@@ -3,7 +3,7 @@
  * Both the REST routes and the Socket.IO gateway call these, so validation, persistence
  * and broadcasting behave identically whichever channel a client uses.
  */
-import type { OrderStatus } from "@prisma/client";
+import type { OrderStatus, Prisma } from "@prisma/client";
 import { prisma } from "../db";
 import { HttpError } from "../lib/http";
 import type { CreateOrderInput } from "../lib/schemas";
@@ -22,29 +22,60 @@ export async function resolveTable(ref: string | number) {
   return table;
 }
 
-/** order:create — price server-side, persist order + items, mark table occupied. */
+/**
+ * Serialise every write that touches one table's tickets (two phones ordering at once,
+ * a cashier settling while a guest adds Round 2…) with a row lock on the table.
+ */
+async function lockTable(tx: Prisma.TransactionClient, tableId: number) {
+  const rows = await tx.$queryRaw<{ status: string }[]>`
+    SELECT status::text AS status FROM restaurant_tables WHERE id = ${tableId} FOR UPDATE`;
+  if (!rows[0]) throw new HttpError(404, "Table not found");
+  return rows[0].status as "vacant" | "occupied" | "bill_requested";
+}
+
+/**
+ * order:create — price server-side and persist. If the table already has open tickets this
+ * becomes a linked add-on round (Round 2, 3…) instead of touching the earlier tickets.
+ */
 export async function createOrder(input: CreateOrderInput) {
   const { table, lines, total } = await buildOrder(input);
 
-  const order = await prisma.$transaction(async (tx) => {
+  const { order, previousStatus } = await prisma.$transaction(async (tx) => {
+    const previousStatus = await lockTable(tx, table.id);
+    const open = await tx.order.aggregate({
+      where: { table_number: table.id, status: { in: ACTIVE_STATUSES } },
+      _max: { round: true },
+      _count: { _all: true },
+    });
+    const round = open._count._all > 0 ? (open._max.round ?? 1) + 1 : 1;
+
     const created = await tx.order.create({
       data: {
         table_number: table.id,
         total_amount: total,
         customer_notes: input.customer_notes,
+        round,
         items: { create: lines },
       },
       include: { items: { orderBy: { id: "asc" } } },
     });
-    if (table.status === "vacant") {
+    if (previousStatus !== "occupied") {
+      // a new round after "Request Bill" re-opens the bill: staff must not print an incomplete one
       await tx.restaurantTable.update({ where: { id: table.id }, data: { status: "occupied" } });
+      if (previousStatus === "bill_requested") {
+        await tx.order.updateMany({
+          where: { table_number: table.id, status: { in: ACTIVE_STATUSES } },
+          data: { bill_requested: false },
+        });
+      }
     }
-    return created;
+    return { order: created, previousStatus };
   });
 
   const payload = serializeOrder(order);
-  broadcast.orderCreated(payload);
-  if (table.status === "vacant") broadcast.tableUpdated({ id: table.id, status: "occupied" });
+  if (payload.round > 1) broadcast.orderAddonCreated(payload);
+  else broadcast.orderCreated(payload);
+  if (previousStatus !== "occupied") broadcast.tableUpdated({ id: table.id, status: "occupied" });
   return payload;
 }
 
@@ -53,8 +84,10 @@ export async function updateOrderStatus(id: string, status: Exclude<OrderStatus,
   if (!/^[0-9a-f-]{36}$/i.test(id)) throw new HttpError(400, "Invalid order id");
 
   const result = await prisma.$transaction(async (tx) => {
-    const current = await tx.order.findUnique({ where: { id } });
-    if (!current) throw new HttpError(404, "Order not found");
+    const found = await tx.order.findUnique({ where: { id }, select: { table_number: true } });
+    if (!found) throw new HttpError(404, "Order not found");
+    await lockTable(tx, found.table_number);
+    const current = await tx.order.findUniqueOrThrow({ where: { id } });
     assertTransition(current.status, status);
 
     // Optimistic guard against two staff screens racing on the same ticket
@@ -96,6 +129,7 @@ export async function toggleAvailability(menuItemId: number, isAvailable: boolea
 export async function requestBill(tableRef: string | number) {
   const t = await resolveTable(tableRef);
   const result = await prisma.$transaction(async (tx) => {
+    await lockTable(tx, t.id);
     const active = await tx.order.findMany({
       where: { table_number: t.id, status: { in: ACTIVE_STATUSES } },
       select: { id: true, total_amount: true },
@@ -118,6 +152,7 @@ export async function requestBill(tableRef: string | number) {
 export async function settleTable(tableRef: string | number) {
   const t = await resolveTable(tableRef);
   const ids = await prisma.$transaction(async (tx) => {
+    await lockTable(tx, t.id);
     const active = await tx.order.findMany({
       where: { table_number: t.id, status: { in: ACTIVE_STATUSES } },
       select: { id: true },

@@ -61,6 +61,8 @@ export type Order = {
   status: OrderStatus;
   customer_notes: string | null;
   bill_requested: boolean;
+  /** 1 = first ticket of the seating, 2+ = add-on rounds */
+  round: number;
   created_at: string;
   updated_at: string;
   items: OrderItem[];

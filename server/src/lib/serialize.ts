@@ -14,6 +14,7 @@ export function serializeOrder(o: OrderWithItems) {
     status: o.status,
     customer_notes: o.customer_notes,
     bill_requested: o.bill_requested,
+    round: o.round,
     created_at: o.created_at.toISOString(),
     updated_at: o.updated_at.toISOString(),
     items: o.items.map((i) => ({

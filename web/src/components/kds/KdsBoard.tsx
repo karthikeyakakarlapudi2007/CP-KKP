@@ -77,6 +77,12 @@ export function KdsBoard() {
         glow(o.id);
         if (useStaffStore.getState().soundOn) void playSound("kitchenBell");
       },
+      /** Round 2+ for a table already eating: same flow, flagged ticket */
+      [EVENTS.ORDER_ADDON_CREATED]: (o: Order) => {
+        upsert(o);
+        glow(o.id);
+        if (useStaffStore.getState().soundOn) void playSound("kitchenBell");
+      },
       [EVENTS.ORDER_STATUS_CHANGED]: upsert,
     },
     load,
@@ -111,6 +117,7 @@ export function KdsBoard() {
   };
 
   const waiting = orders.filter((o) => o.status === "pending").length;
+  const addons = orders.filter((o) => (o.round ?? 1) > 1).length;
   const cooking = orders.length - waiting;
   const late = orders.filter((o) => urgencyOf(o.created_at, now) === "late").length;
 
@@ -126,6 +133,7 @@ export function KdsBoard() {
         <div className="flex flex-wrap items-center gap-2 text-sm font-bold">
           <span className="rounded-lg bg-slate-800 px-3 py-1.5">NEW {waiting}</span>
           <span className="rounded-lg bg-sky-950 px-3 py-1.5 text-sky-300">COOKING {cooking}</span>
+          {addons > 0 && <span className="rounded-lg bg-violet-950 px-3 py-1.5 text-violet-300">ADD-ONS {addons}</span>}
           {late > 0 && <span className="animate-pulse rounded-lg bg-red-600 px-3 py-1.5">LATE {late}</span>}
           <span className={cn("flex items-center gap-1 rounded-lg px-3 py-1.5", connected ? "bg-emerald-950 text-emerald-300" : "bg-red-950 text-red-300")}>
             {connected ? <Wifi className="size-4" /> : <WifiOff className="size-4" />} {connected ? "LIVE" : "OFFLINE"}

@@ -16,6 +16,8 @@ export const EVENTS = {
 
   /* ---- server -> client broadcasts ---- */
   ORDER_CREATED: "order:created",
+  /** a second (third…) round ordered while the table already has open tickets */
+  ORDER_ADDON_CREATED: "order:addon_created",
   ORDER_STATUS_CHANGED: "order:status_changed",
   MENU_AVAILABILITY_TOGGLED: "menu:availability_toggled",
   /** any structural menu edit (price, name, new dish) — clients refetch */

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { BellRing, X } from "lucide-react";
 import { useSocket } from "@/hooks/useSocket";
 import { api } from "@/lib/api";
+import { computeBill } from "@/lib/billing";
 import { playSound } from "@/lib/chime";
 import { EVENTS } from "@/lib/events";
 import { formatINR } from "@/lib/utils";
@@ -23,7 +24,9 @@ export function BillAlertBanner() {
     try {
       const tables = await api.tables();
       setBillAlerts(
-        tables.filter((t) => t.status === "bill_requested").map((t) => ({ table: t.id, amountDue: t.amount_due, at: Date.now() })),
+        tables
+          .filter((t) => t.status === "bill_requested")
+          .map((t) => ({ table: t.id, amountDue: computeBill(t.amount_due).netPayable, at: Date.now() })),
       );
     } catch {
       /* the tabs surface load errors */
@@ -38,13 +41,16 @@ export function BillAlertBanner() {
     { role: "admin", staffKey },
     {
       [EVENTS.TABLE_BILL_REQUESTED]: (p: { table_number: number; amount_due: number }) => {
-        raiseBillAlert({ table: p.table_number, amountDue: p.amount_due, at: Date.now() });
+        raiseBillAlert({ table: p.table_number, amountDue: computeBill(p.amount_due).netPayable, at: Date.now() });
         if (useStaffStore.getState().soundOn) void playSound("billAlert");
       },
       [EVENTS.TABLE_STATUS_UPDATED]: (p: { id: number; status: string }) => {
         if (p.status !== "bill_requested") clearBillAlert(p.id);
       },
       [EVENTS.ORDER_CREATED]: () => {
+        if (useStaffStore.getState().soundOn) void playSound("newOrder");
+      },
+      [EVENTS.ORDER_ADDON_CREATED]: () => {
         if (useStaffStore.getState().soundOn) void playSound("newOrder");
       },
     },

@@ -72,9 +72,12 @@ async function main() {
   assert.equal(missingCurry.ok, false);
   console.log("  ✓ combo without mandatory curry rejected");
 
+  // start from an empty table so this is Round 1
+  await fetch(`${URL}/api/tables/${TABLE}/settle`, { method: "POST", headers: STAFF_KEY ? { "x-staff-key": STAFF_KEY } : {} });
+
   log.length = 0;
   const order = ok(
-    await call<{ id: string; total_amount: number; status: string }>(guest, "order:create", {
+    await call<{ id: string; total_amount: number; status: string; round: number }>(guest, "order:create", {
       table_number: TABLE,
       customer_notes: "Less spicy for kids",
       items: [
@@ -92,6 +95,24 @@ async function main() {
   assert.ok(log.includes("admin <- order:created") && log.includes("kds <- order:created"), "order:created to admin + kds");
   assert.ok(!log.includes("other <- order:created"), "other tables must not see the order");
   console.log("  ✓ order:created reached admin + kds only (plus its own table)");
+  assert.equal(order.round, 1);
+
+  // ---- Round 2: a second guest at the same table adds a dish mid-meal
+  log.length = 0;
+  const addon = ok(
+    await call<{ id: string; round: number; total_amount: number }>(other, "order:create", {
+      table_number: TABLE,
+      items: [{ menu_item_id: majjiga.id, quantity: 1 }],
+    }),
+    "add-on order:create saved",
+  );
+  assert.equal(addon.round, 2, "second open ticket must be round 2");
+  await settle();
+  assert.ok(log.includes("kds <- order:addon_created") && log.includes("admin <- order:addon_created"));
+  assert.ok(log.includes("guest <- order:addon_created"), "guests at the table see the add-on");
+  assert.ok(!log.includes("kds <- order:created"), "add-on is not announced as a fresh order");
+  console.log("  ✓ order:addon_created (round 2) reached kds, admin and the table");
+  ok(await call(kds, "order:update_status", { order_id: addon.id, status: "cancelled" }), "add-on cancelled (cleanup)");
 
   // ---- order:update_status
   const denied = await call(guest, "order:update_status", { order_id: order.id, status: "preparing" });

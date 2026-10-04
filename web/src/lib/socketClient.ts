@@ -1,6 +1,7 @@
 "use client";
+import { useSyncExternalStore } from "react";
 import { io, type Socket } from "socket.io-client";
-import { API_URL } from "./config";
+import { SOCKET_URL } from "./config";
 import { EVENTS } from "./events";
 
 /**
@@ -22,19 +23,77 @@ export class CommandError extends Error {
   }
 }
 
+export type ConnectionState = "connecting" | "connected" | "reconnecting" | "disconnected";
+
 let socket: Socket | null = null;
+let connectionState: ConnectionState = "connecting";
+const stateListeners = new Set<() => void>();
+
+function setConnectionState(next: ConnectionState) {
+  if (next === connectionState) return;
+  connectionState = next;
+  stateListeners.forEach((l) => l());
+}
+
+export const getConnectionState = () => connectionState;
+
+/** React hook: live connection state of the shared socket. */
+export function useConnectionState(): ConnectionState {
+  return useSyncExternalStore(
+    (cb) => {
+      getSocket();
+      stateListeners.add(cb);
+      return () => stateListeners.delete(cb);
+    },
+    getConnectionState,
+    () => "connecting",
+  );
+}
 /** room payload → number of mounted users (several components may share one room) */
 const joined = new Map<string, { payload: JoinPayload; refs: number }>();
 
 export function getSocket(): Socket {
   if (!socket) {
-    socket = io(API_URL, {
+    const s = io(SOCKET_URL, {
       transports: ["websocket", "polling"],
-      reconnectionDelayMax: 5000,
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 500,
+      reconnectionDelayMax: 4000,
+      randomizationFactor: 0.4,
+      timeout: 8000,
     });
-    socket.on("connect", () => {
-      joined.forEach(({ payload }) => socket!.emit(EVENTS.JOIN, payload));
+    socket = s;
+
+    s.on("connect", () => {
+      setConnectionState("connected");
+      // (re)join every room this tab cares about — covers server restarts and long outages
+      joined.forEach(({ payload }) => s.emit(EVENTS.JOIN, payload));
     });
+    s.on("disconnect", (reason) => {
+      // "io client disconnect" = we closed it on purpose; anything else will auto-retry
+      setConnectionState(reason === "io client disconnect" ? "disconnected" : "reconnecting");
+      // the server kicked us (e.g. deploy): socket.io won't retry on its own in this case
+      if (reason === "io server disconnect") s.connect();
+    });
+    s.on("connect_error", () => setConnectionState(s.active ? "reconnecting" : "disconnected"));
+    s.io.on("reconnect_attempt", () => setConnectionState("reconnecting"));
+    s.io.on("reconnect_failed", () => setConnectionState("disconnected"));
+
+    if (typeof window !== "undefined") {
+      // phones: radio off / cell handoff / tab frozen in the background
+      window.addEventListener("offline", () => setConnectionState("disconnected"));
+      const kick = () => {
+        if (!s.connected) {
+          setConnectionState("reconnecting");
+          s.connect();
+        }
+      };
+      window.addEventListener("online", kick);
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") kick();
+      });
+    }
   }
   return socket;
 }

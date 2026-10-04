@@ -1,31 +1,40 @@
-# Render Blueprint — API + realtime gateway + PostgreSQL
+# Render Blueprint — Express API + Socket.IO realtime gateway + PostgreSQL
+# Deploy: Render dashboard → New → Blueprint → pick this repo.
+# The Next.js frontend deploys separately on Vercel (root directory: web/).
 databases:
   - name: kodikura-db
     plan: basic-256mb
     databaseName: kodikura
     user: kodikura
+    postgresMajorVersion: "16"
 
 services:
   - type: web
     name: kodikura-api
     runtime: node
     rootDir: server
-    plan: starter
+    plan: starter # keep ≥ starter: free instances sleep and drop every live socket
+    region: singapore # closest Render region to Andhra Pradesh
+    numInstances: 1 # Socket.IO rooms live in memory — scale up before scaling out
     buildCommand: npm ci --include=dev && npm run build
-    # Migrations + idempotent seed (tables 1–10; menu only when empty)
+    # Migrations + idempotent seed (tables 1–10; the menu is only created when empty)
     preDeployCommand: npx prisma migrate deploy && npx prisma db seed
     startCommand: npm start
     healthCheckPath: /health
+    autoDeploy: true
     envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
       - key: DATABASE_URL
         fromDatabase:
           name: kodikura-db
           property: connectionString
-      - key: NODE_ENV
-        value: production
+      # Comma-separated; `*` matches one DNS label (Vercel preview URLs)
       - key: CORS_ORIGIN
-        sync: false # e.g. https://kodikura.vercel.app
+        sync: false # e.g. https://kodikura.vercel.app,https://kodikura-*.vercel.app
       - key: STAFF_API_KEY
-        generateValue: true
+        generateValue: true # copy it from the dashboard and give it to staff for /admin and /kds
       - key: TZ_OFFSET_MINUTES
         value: "330"

@@ -3,7 +3,7 @@ import { Server, type Socket } from "socket.io";
 import { ZodError } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "./db";
-import { env } from "./env";
+import { corsOrigin } from "./env";
 import { EVENTS, ROOMS } from "./events";
 import { HttpError } from "./lib/http";
 import {
@@ -66,7 +66,9 @@ function requireStaffSocket(socket: GatewaySocket, roles: StaffRole[]) {
 
 export function initSocket(server: HttpServer) {
   const io = new Server(server, {
-    cors: { origin: env.corsOrigins, methods: ["GET", "POST"] },
+    cors: { origin: corsOrigin, methods: ["GET", "POST"] },
+    // mobile guests lose signal for a few seconds: keep their rooms + missed events on resume
+    connectionStateRecovery: { maxDisconnectionDuration: 2 * 60_000, skipMiddlewares: true },
     pingInterval: 10_000,
     pingTimeout: 8_000,
     maxHttpBufferSize: 100_000,
@@ -75,8 +77,9 @@ export function initSocket(server: HttpServer) {
 
   io.on("connection", (raw) => {
     const socket = raw as unknown as GatewaySocket;
-    socket.data.orderTimes = [];
-    socket.data.staffRoles = new Set();
+    // a socket recovered after a brief drop keeps its rooms + data; only initialise fresh ones
+    socket.data.orderTimes ??= [];
+    socket.data.staffRoles ??= new Set();
 
     /** join → rooms: `table:<n>` for guests, `admin` / `kds` for staff (staff key checked). */
     command(socket, EVENTS.JOIN, async (payload) => {

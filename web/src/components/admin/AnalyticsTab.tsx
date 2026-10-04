@@ -68,6 +68,7 @@ export function AnalyticsTab() {
     { role: "admin", staffKey },
     {
       [EVENTS.ORDER_CREATED]: reloadSoon,
+      [EVENTS.ORDER_ADDON_CREATED]: reloadSoon,
       [EVENTS.ORDER_STATUS_CHANGED]: (o: Order) => {
         if (o.status === "paid" || o.status === "cancelled") reloadSoon();
       },
@@ -109,7 +110,7 @@ export function AnalyticsTab() {
       ) : (
         <>
           <div className="grid gap-4 sm:grid-cols-3">
-            <StatTile label={range === "today" ? "Today's revenue" : `Revenue · ${rangeLabel.toLowerCase()}`} value={formatINR(data.revenue)} hint="Sum of paid orders" />
+            <StatTile label={range === "today" ? "Today's revenue" : `Revenue · ${rangeLabel.toLowerCase()}`} value={formatINR(data.revenue)} hint="Paid orders · net sales excl. GST" />
             <StatTile label="Fulfilled orders" value={data.fulfilled_orders.toLocaleString("en-IN")} hint="Orders marked as paid" />
             <StatTile label="Average ticket size" value={formatINR(data.average_ticket)} hint="Revenue ÷ fulfilled orders" />
           </div>

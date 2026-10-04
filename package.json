@@ -1,0 +1,18 @@
+{
+  "name": "kodikura-pappucharu",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dine-in QR ordering, KDS and merchant dashboard for Kodikura Pappucharu",
+  "scripts": {
+    "install:all": "npm --prefix server ci && npm --prefix web ci",
+    "build": "npm --prefix server run build && npm --prefix web run build",
+    "typecheck": "npm --prefix server run typecheck && npm --prefix web run typecheck",
+    "dev:server": "npm --prefix server run dev",
+    "dev:web": "npm --prefix web run dev",
+    "db:setup": "npm --prefix server run db:setup",
+    "test:socket": "npm --prefix server run test:socket"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

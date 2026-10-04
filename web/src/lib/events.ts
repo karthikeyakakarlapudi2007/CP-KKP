@@ -8,6 +8,7 @@ export const EVENTS = {
   TABLE_REQUEST_BILL: "table:request_bill",
 
   ORDER_CREATED: "order:created",
+  ORDER_ADDON_CREATED: "order:addon_created",
   ORDER_STATUS_CHANGED: "order:status_changed",
   MENU_AVAILABILITY_TOGGLED: "menu:availability_toggled",
   MENU_UPDATED: "menu:updated",

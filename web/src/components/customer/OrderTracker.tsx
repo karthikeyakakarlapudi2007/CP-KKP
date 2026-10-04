@@ -5,6 +5,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { useTranslation } from "@/hooks/useTranslation";
 import type { TranslationKey } from "@/lib/translations";
 import type { Order } from "@/lib/types";
+import { computeBill, GST_RATE, ordersSubtotal } from "@/lib/billing";
 import { cn, formatINR, splitSnapshot } from "@/lib/utils";
 import { useCustomerStore, type ActiveOrderStatus } from "@/store/useCustomerStore";
 import { ComboSummary } from "./ComboSummary";
@@ -65,7 +66,7 @@ export function OrderTracker({ requestingBill, onRequestBill, onOrderMore }: Pro
   const activeOrder = useCustomerStore((s) => s.activeOrder);
   const orders = useCustomerStore((s) => s.tableOrders);
   const billRequested = Boolean(activeOrder?.billRequested);
-  const due = orders.reduce((s, o) => s + o.total_amount, 0);
+  const bill = computeBill(ordersSubtotal(orders));
   const latestFirst = [...orders].sort((a, b) => b.created_at.localeCompare(a.created_at));
 
   return (
@@ -100,7 +101,13 @@ export function OrderTracker({ requestingBill, onRequestBill, onOrderMore }: Pro
               {latestFirst.length > 1 && (
                 <div className="mb-3">
                   <div className="mb-2 flex justify-between text-xs text-muted-foreground">
-                    <span className="font-mono">#{o.id.slice(0, 6).toUpperCase()}</span>
+                    <span className="flex items-center gap-1.5">
+                      <span className={cn("rounded-full px-2 py-0.5 font-bold", o.round > 1 ? "bg-violet-100 text-violet-800" : "bg-muted text-foreground")}>
+                        {t("round")} {o.round}
+                        {o.round > 1 && ` · ${t("addOn")}`}
+                      </span>
+                      <span className="font-mono">#{o.id.slice(0, 6).toUpperCase()}</span>
+                    </span>
                     <span>{new Date(o.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}</span>
                   </div>
                   {o.id !== activeOrder?.id && <StatusSteps status={o.status} compact />}
@@ -132,8 +139,11 @@ export function OrderTracker({ requestingBill, onRequestBill, onOrderMore }: Pro
       <div className="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-lg space-y-2 border-t bg-background/95 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur">
         {orders.length > 0 && (
           <div className="flex items-center justify-between px-1">
-            <span className="text-sm text-muted-foreground">{t("amountDue")}</span>
-            <span className="text-xl font-black">{formatINR(due)}</span>
+            <span className="text-sm text-muted-foreground">
+              {t("amountDue")}
+              {GST_RATE > 0 && <span className="block text-[11px]">{formatINR(bill.subtotal)} + {GST_RATE}% GST</span>}
+            </span>
+            <span className="text-xl font-black">{formatINR(bill.netPayable)}</span>
           </div>
         )}
         <Button

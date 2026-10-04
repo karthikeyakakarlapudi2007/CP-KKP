@@ -89,6 +89,8 @@ model Order {
   status         OrderStatus     @default(pending)
   customer_notes String?
   bill_requested Boolean         @default(false)
+  /// 1 = first ticket for this seating, 2+ = add-on rounds ordered mid-meal
+  round          Int             @default(1)
   created_at     DateTime        @default(now())
   updated_at     DateTime        @updatedAt
   table          RestaurantTable @relation(fields: [table_number], references: [id], onDelete: Restrict)

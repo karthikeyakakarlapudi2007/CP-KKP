@@ -56,11 +56,13 @@ web/
   src/components/customer/    # CustomerApp, CustomerHeader, CategoryNav (scroll-spy), MenuItemCard,
                               # ComboBuilderModal, CartDrawer (sticky bar + slide-up drawer), OrderTracker
   src/components/admin/       # AdminShell (tabs + BillAlertBanner), LiveOrdersTab, TableDetailsDrawer,
-                              # MenuInventoryTab, ItemFormDialog, AnalyticsTab, QrStickerSheet
+                              # MenuInventoryTab, ItemFormDialog, AnalyticsTab, QrStickerSheet,
+                              # ThermalReceipt + ReceiptDialog (80mm bill)
   src/components/kds/         # KdsBoard, KdsTicket
   src/store/                  # Zustand: useCustomerStore (table, language, cart, activeOrder), useStaffStore
   src/hooks/                  # useSocket (rooms on the shared socket + refetch on reconnect), useTranslation, useNow
-  src/lib/                    # socketClient (singleton + acked commands), staffActions, translations (EN/తెలుగు),
+  src/lib/                    # socketClient (singleton, acked commands, connection state), staffActions, billing (GST),
+                              # translations (EN/తెలుగు),
                               # api, types, chime (MP3 via HTML5 Audio, Web Audio synth fallback)
   public/sounds/              # kitchen-bell.mp3 (KDS), chime.mp3 (dashboard alerts)
 ```
@@ -89,6 +91,35 @@ npm run dev                     # http://localhost:3000
 Open `http://localhost:3000/t/1` on a phone-sized viewport, `/kds` in another window and `/admin` in a third,
 then place an order and watch it flow through.
 
+## Rush-hour behaviour
+
+* **Several guests, one table.** Every phone that scans a table's QR joins the same live room. If the table
+  already has open tickets, the menu shows an **Active Table Order in Progress** banner with the running
+  bill and what has already been ordered, and the cart button becomes **Place Add-on Order · Round N**.
+* **Add-on rounds.** A mid-meal order never edits earlier tickets. It becomes a linked ticket with
+  `round = N` and is broadcast as `order:addon_created`. The KDS shows it as `TABLE # (ADD-ON / ROUND N)`
+  with a violet badge and glow. Ordering again after "Request Bill" re-opens the bill (the table goes back
+  to `occupied`), so staff never print an incomplete bill.
+* **No races.** Creating orders, changing status, requesting the bill and settling all take a row lock on
+  the table (`SELECT … FOR UPDATE`). Twelve simultaneous orders on one table get rounds 1–12 with no
+  duplicates.
+* **Patchy mobile data.** The shared socket reports `connecting / connected / reconnecting / disconnected`.
+  Guests see an amber "Connecting to restaurant server... / సర్వర్‌కి కనెక్ట్ అవుతోంది..." pill. The
+  socket retries forever with backoff and also reconnects when the phone comes back online or the tab
+  becomes visible. After reconnecting it re-joins `table:<n>` and re-fetches orders. Short drops (under
+  2 min) are bridged by Socket.IO connection-state recovery.
+
+## Billing & the 80mm thermal receipt
+
+Menu prices are pre-tax. The bill adds GST split into CGST and SGST (`NEXT_PUBLIC_GST_RATE`, default 5),
+then rounds to the nearest rupee, with all maths done in paise. Guests, the dashboard and the receipt all
+show the same net payable. Revenue in Analytics is net sales **excluding** GST.
+
+In **Live Orders**, every occupied table has **Generate Bill / బిల్ ప్రింట్**. It opens a preview of
+`ThermalReceipt`: 80mm wide, monochrome, all rounds merged, with subtotal, CGST, SGST, round off and net
+payable. **Print Bill** hides everything except the receipt and sets `@page` to exactly 80mm × the
+receipt's height, so thermal printers cut right after the footer.
+
 ## Configuration
 
 **server/.env**
@@ -97,7 +128,7 @@ then place an order and watch it flow through.
 | --- | --- |
 | `DATABASE_URL` | PostgreSQL connection string |
 | `PORT` | HTTP port (default `4000`) |
-| `CORS_ORIGIN` | Comma-separated allowed web origins (your Vercel domain) |
+| `CORS_ORIGIN` | Comma-separated allowed origins for REST and WebSockets. `*` matches one DNS label, e.g. `http://localhost:3000,https://kodikura.vercel.app,https://kodikura-*.vercel.app` |
 | `STAFF_API_KEY` | Optional shared key for staff screens & endpoints. When set, `/admin` and `/kds` ask for it once per device. Leave empty only for local development. |
 | `TZ_OFFSET_MINUTES` | Restaurant timezone offset for "today" analytics (IST = `330`) |
 
@@ -107,13 +138,21 @@ then place an order and watch it flow through.
 | --- | --- |
 | `NEXT_PUBLIC_API_URL` | Public URL of the Render service |
 | `NEXT_PUBLIC_SITE_URL` | Public URL of the web app, encoded into table QR codes (defaults to the current origin) |
+| `NEXT_PUBLIC_SOCKET_URL` | Socket.IO URL. Empty means use `NEXT_PUBLIC_API_URL` (same Render service) |
+| `NEXT_PUBLIC_GST_RATE` | GST % added to bills, split CGST/SGST (default `5`; `0` if prices include tax) |
 
 ## Deployment
+
+`.env.example` at the repo root documents every variable for both apps. `npm run build` at the root
+builds the server and then the web app.
 
 **Backend (Render):** `render.yaml` is a Blueprint that provisions PostgreSQL and the `server/` web service.
 It runs `prisma migrate deploy` plus the idempotent seed before each deploy, and generates a random
 `STAFF_API_KEY` (find it in the Render dashboard and share it with staff). Set `CORS_ORIGIN` to the Vercel
-URL. Socket.IO works on Render web services without extra config.
+URL. Socket.IO works on Render web services without extra config. Keep the service on a paid instance,
+because free instances sleep and drop every live socket. Keep it to one instance unless you add a
+Socket.IO adapter (rooms live in memory). `GET /health` returns `{ status: "ok", timestamp, database }`
+and responds 503 if PostgreSQL is unreachable.
 
 **Frontend (Vercel):** import the repo, set **Root Directory** to `web`, and add `NEXT_PUBLIC_API_URL` and
 `NEXT_PUBLIC_SITE_URL`. Then print the QR codes from `/admin/qr`.
@@ -152,7 +191,8 @@ Every command replies with `{ ok: true, data }` or `{ ok: false, status, error, 
 
 | Event | Recipients | Payload |
 | --- | --- | --- |
-| `order:created` | admin, kds, `table:<n>` | full order |
+| `order:created` | admin, kds, `table:<n>` | full order (round 1) |
+| `order:addon_created` | admin, kds, `table:<n>` | full order (round ≥ 2, added mid-meal) |
 | `order:status_changed` | `table:<n>`, kds, admin | full order |
 | `menu:availability_toggled` | everyone | `{ menu_item_id, is_available }` |
 | `menu:updated` | everyone | `{ at }` (dish/category edits → clients refetch) |

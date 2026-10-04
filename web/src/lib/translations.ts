@@ -75,7 +75,23 @@ export const translations = {
   thankYou: { en: "Payment received — thank you for dining with us! 🙏", te: "చెల్లింపు అందింది — మా దగ్గర భోజనం చేసినందుకు ధన్యవాదాలు! 🙏" },
   orderCancelled: { en: "An order was cancelled by the restaurant.", te: "ఒక ఆర్డర్‌ను రెస్టారెంట్ రద్దు చేసింది." },
 
+  // Multi-guest / add-on rounds
+  activeOrderTitle: { en: "Active Table Order in Progress", te: "టేబుల్ ఆర్డర్ కొనసాగుతోంది" },
+  activeOrderHint: { en: "Anyone at this table can add more dishes — they go to the kitchen as a new round.", te: "ఈ టేబుల్ వద్ద ఎవరైనా ఇంకా వంటకాలు జోడించవచ్చు — అవి కొత్త రౌండ్‌గా వంటగదికి వెళ్తాయి." },
+  runningBill: { en: "Running bill", te: "ప్రస్తుత బిల్" },
+  alreadyOrdered: { en: "Already ordered", te: "ఇప్పటికే ఆర్డర్ చేసినవి" },
+  showItems: { en: "Show items", te: "ఐటమ్స్ చూపించు" },
+  hideItems: { en: "Hide items", te: "ఐటమ్స్ దాచు" },
+  round: { en: "Round", te: "రౌండ్" },
+  addOn: { en: "Add-on", te: "అదనపు" },
+  placeAddon: { en: "Place Add-on Order", te: "అదనపు ఆర్డర్ ఇవ్వండి" },
+  addonNote: { en: "Earlier rounds stay on your bill — this is sent as a new ticket.", te: "మునుపటి ఆర్డర్లు బిల్‌లోనే ఉంటాయి — ఇది కొత్త టికెట్‌గా వెళ్తుంది." },
+  inclGst: { en: "incl. GST", te: "GST తో కలిపి" },
+  billReopened: { en: "New round added — request the bill again when you're done.", te: "కొత్త రౌండ్ జోడించబడింది — అయ్యాక మళ్ళీ బిల్ అడగండి." },
+
   // Errors & connectivity
+  connecting: { en: "Connecting to restaurant server...", te: "సర్వర్‌కి కనెక్ట్ అవుతోంది..." },
+  backOnline: { en: "Back online", te: "మళ్ళీ కనెక్ట్ అయ్యింది" },
   invalidTable: { en: "This table link is not valid. Please scan the QR code on your table again.", te: "ఈ టేబుల్ లింక్ సరైనది కాదు. దయచేసి మీ టేబుల్‌పై ఉన్న QR కోడ్‌ను మళ్లీ స్కాన్ చేయండి." },
   loadError: { en: "Could not load the menu. Check your connection.", te: "మెనూ లోడ్ కాలేదు. మీ కనెక్షన్ చూడండి." },
   offline: { en: "Reconnecting…", te: "మళ్ళీ కనెక్ట్ అవుతోంది…" },
