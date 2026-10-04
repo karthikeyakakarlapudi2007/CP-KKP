@@ -1,7 +1,18 @@
 /** Socket.IO event names shared by the gateway and the web client. */
 export const EVENTS = {
-  /** client -> server: join role-specific rooms */
+  /* ---- client -> server commands (each replies through a Socket.IO ack) ---- */
+  /** join role-specific rooms: { role: "customer", table } | { role: "admin" | "kds", staffKey } */
   JOIN: "join",
+  /** guest places an order (public) */
+  ORDER_CREATE: "order:create",
+  /** staff advances / pays / cancels an order (admin or kds sockets only) */
+  ORDER_UPDATE_STATUS: "order:update_status",
+  /** staff toggles a dish's stock (admin sockets only) */
+  MENU_TOGGLE_AVAILABILITY: "menu:toggle_availability",
+  /** guest asks for the bill (public) */
+  TABLE_REQUEST_BILL: "table:request_bill",
+
+  /* ---- server -> client broadcasts ---- */
   ORDER_CREATED: "order:created",
   ORDER_STATUS_CHANGED: "order:status_changed",
   MENU_AVAILABILITY_TOGGLED: "menu:availability_toggled",

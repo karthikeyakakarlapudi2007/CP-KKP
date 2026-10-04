@@ -17,7 +17,7 @@ function download(name: string, href: string) {
 
 export function QrSheet() {
   const [base, setBase] = useState("");
-  const [count, setCount] = useState(20);
+  const [count, setCount] = useState(10);
   const [codes, setCodes] = useState<Qr[]>([]);
 
   useEffect(() => setBase(siteUrl()), []);

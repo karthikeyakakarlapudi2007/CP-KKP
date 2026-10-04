@@ -39,12 +39,15 @@ table with the server; there are no customer logins and no online payment gatewa
 server/
   prisma/schema.prisma        # RestaurantTable, Category, MenuItem, ComboConfig, Order, OrderItem
   prisma/migrations/          # SQL migrations (prisma migrate)
-  prisma/seed.ts              # 20 tables + authentic bilingual menu with combo steps
+  prisma/seed.ts              # Tables 1–10 + 4 categories / 17 bilingual dishes + 2-step Special Combo
   src/index.ts                # Express app, security middleware, HTTP + Socket.IO bootstrap
-  src/socket.ts               # Realtime gateway: room joins + typed broadcast helpers
+  src/socket.ts               # Realtime gateway: room joins + order/menu/table command handlers (acks)
+  src/realtime.ts             # Typed broadcast helpers (emit only after DB commit)
   src/events.ts               # Event names & room names
   src/routes/{menu,orders,tables,analytics}.ts
+  src/services/actions.ts     # createOrder / updateOrderStatus / toggleAvailability / requestBill — shared by REST + sockets
   src/services/orders.ts      # Server-side pricing, combo validation, status transitions
+  scripts/socket-smoke.ts     # End-to-end realtime test (npm run test:socket)
   src/lib/{schemas,serialize,http}.ts
   src/middleware/{staffAuth,errors}.ts
 web/
@@ -67,9 +70,10 @@ Requires Node 20+ and PostgreSQL 14+.
 cd server
 cp .env.example .env            # set DATABASE_URL
 npm install
-npx prisma migrate dev          # creates the schema
-npm run db:seed                 # 20 tables + menu
-npm run dev                     # http://localhost:4000
+npm run db:migrate              # creates the schema (prisma migrate dev)
+npm run db:seed                 # tables 1–10 + menu (idempotent)
+npm run dev                     # API + socket server on http://localhost:4000
+npm run test:socket             # (second terminal) end-to-end realtime checks
 
 # 2. Web app (new terminal)
 cd web
@@ -110,15 +114,42 @@ URL. Socket.IO works on Render web services without extra config.
 **Frontend (Vercel):** import the repo, set **Root Directory** to `web`, and add `NEXT_PUBLIC_API_URL` and
 `NEXT_PUBLIC_SITE_URL`. Then print the QR codes from `/admin/qr`.
 
-## Realtime events
+### Server scripts
+
+| Script | What it does |
+| --- | --- |
+| `npm run dev` / `npm run socket:dev` | Start the Express + Socket.IO server with hot reload |
+| `npm run build` then `npm start` / `npm run socket:start` | Production build and start |
+| `npm run db:migrate` | Create/apply migrations in development (`prisma migrate dev`) |
+| `npm run db:deploy` | Apply committed migrations (production) |
+| `npm run db:seed` | Seed tables 1–10 and the menu (skips the menu if one exists) |
+| `npm run db:setup` | `db:deploy` + `db:seed` in one go |
+| `npm run db:reset` | Drop and recreate the database, then re-seed. **Destroys all data. Use on dev databases only.** |
+| `npm run test:socket` | Run the realtime smoke test against a running server |
+
+## Realtime engine
 
 Clients emit `join` with `{ role: "customer", table }` or `{ role: "admin" | "kds", staffKey }` and are placed
 in the matching room (`table:<n>`, `admin`, `kds`).
 
+### Commands (client → server, answered via Socket.IO acknowledgement)
+
+Every command replies with `{ ok: true, data }` or `{ ok: false, status, error, details? }`, for example
+`socket.emitWithAck("order:create", payload)`. Each command runs the same service function as its REST twin.
+
+| Command | Who may send | Payload | Effect |
+| --- | --- | --- | --- |
+| `order:create` | anyone (20/min per connection) | `{ table_number, customer_notes?, items: [{ menu_item_id, quantity, item_notes?, combo_selections?: { "<step>": [optionId] } }] }` | Prices & saves the order + items; table → `occupied`; emits `order:created` |
+| `order:update_status` | sockets joined as `admin` or `kds` | `{ order_id, status: "preparing" \| "served" \| "paid" \| "cancelled" }` | Validated transition; emits `order:status_changed`; paying the last open order frees the table |
+| `menu:toggle_availability` | sockets joined as `admin` | `{ menu_item_id, is_available }` | Updates stock; emits `menu:availability_toggled` to everyone |
+| `table:request_bill` | anyone | `{ table_number }` | Table → `bill_requested`; emits `table:bill_requested` |
+
+### Broadcasts (server → client)
+
 | Event | Recipients | Payload |
 | --- | --- | --- |
 | `order:created` | admin, kds, `table:<n>` | full order |
-| `order:status_changed` | admin, kds, `table:<n>` | full order |
+| `order:status_changed` | `table:<n>`, kds, admin | full order |
 | `menu:availability_toggled` | everyone | `{ menu_item_id, is_available }` |
 | `menu:updated` | everyone | `{ at }` (dish/category edits → clients refetch) |
 | `table:bill_requested` | admin (alert sound), `table:<n>` | `{ table_number, amount_due, order_ids }` |

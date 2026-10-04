@@ -12,7 +12,7 @@ services:
     rootDir: server
     plan: starter
     buildCommand: npm ci --include=dev && npm run build
-    # Migrations + idempotent seed (tables 1–20; menu only when empty)
+    # Migrations + idempotent seed (tables 1–10; menu only when empty)
     preDeployCommand: npx prisma migrate deploy && npx prisma db seed
     startCommand: npm start
     healthCheckPath: /health

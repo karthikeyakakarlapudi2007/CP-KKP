@@ -92,3 +92,24 @@ export type CreateOrderInput = z.infer<typeof createOrderSchema>;
 export const statusUpdateSchema = z.object({
   status: z.enum(["preparing", "served", "paid", "cancelled"]),
 });
+
+/* ---- Socket command payloads ---- */
+
+export const socketJoinSchema = z.discriminatedUnion("role", [
+  z.object({ role: z.literal("customer"), table: z.coerce.number().int().positive() }),
+  z.object({ role: z.enum(["admin", "kds"]), staffKey: z.string().max(200).optional() }),
+]);
+
+export const socketUpdateStatusSchema = z.object({
+  order_id: z.string().uuid(),
+  status: statusUpdateSchema.shape.status,
+});
+
+export const socketToggleSchema = z.object({
+  menu_item_id: z.coerce.number().int().positive(),
+  is_available: z.boolean(),
+});
+
+export const socketRequestBillSchema = z.object({
+  table_number: z.coerce.number().int().positive(),
+});

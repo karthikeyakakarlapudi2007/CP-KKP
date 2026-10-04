@@ -5,7 +5,8 @@ import { ah, HttpError, parseIntParam } from "../lib/http";
 import { availabilitySchema, categorySchema, menuItemSchema } from "../lib/schemas";
 import { serializeMenuItem } from "../lib/serialize";
 import { requireStaff } from "../middleware/staffAuth";
-import { broadcast } from "../socket";
+import { broadcast } from "../realtime";
+import { toggleAvailability } from "../services/actions";
 
 export const menuRouter = Router();
 
@@ -126,9 +127,8 @@ menuRouter.patch(
   ah(async (req, res) => {
     const id = parseIntParam(req.params.id);
     const { is_available } = availabilitySchema.parse(req.body);
-    const item = await prisma.menuItem.update({ where: { id }, data: { is_available } });
-    broadcast.availabilityToggled({ menu_item_id: item.id, is_available: item.is_available });
-    res.json({ id: item.id, is_available: item.is_available });
+    const result = await toggleAvailability(id, is_available);
+    res.json({ id: result.menu_item_id, is_available: result.is_available });
   }),
 );
 
