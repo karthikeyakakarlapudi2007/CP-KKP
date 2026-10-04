@@ -16,15 +16,16 @@ function localDayStart(daysBack = 0): Date {
   return new Date(local.getTime() - offsetMs);
 }
 
-/** KPIs: revenue / fulfilled orders / avg ticket over paid orders, plus top sellers. ?range=today|7d|30d */
+/** KPIs: revenue / fulfilled orders / avg ticket over paid orders, plus top sellers. ?range=today|7d|30d&top=5 */
 analyticsRouter.get(
   "/analytics/summary",
   requireStaff,
   ah(async (req, res) => {
     const range = req.query.range === "7d" ? 6 : req.query.range === "30d" ? 29 : 0;
     const since = localDayStart(range);
+    const top = Math.min(Math.max(Number(req.query.top) || 10, 1), 50);
 
-    const [paid, top, openOrders] = await Promise.all([
+    const [paid, topDishes, openOrders] = await Promise.all([
       prisma.order.aggregate({
         where: { status: "paid", created_at: { gte: since } },
         _sum: { total_amount: true },
@@ -40,7 +41,7 @@ analyticsRouter.get(
         WHERE o.status <> 'cancelled' AND o.created_at >= ${since}
         GROUP BY oi.menu_item_id
         ORDER BY qty DESC, revenue DESC
-        LIMIT 10`,
+        LIMIT ${top}`,
       prisma.order.count({ where: { status: { in: ["pending", "preparing", "served"] } } }),
     ]);
 
@@ -53,7 +54,7 @@ analyticsRouter.get(
       fulfilled_orders: fulfilled,
       average_ticket: fulfilled ? Math.round((revenue / fulfilled) * 100) / 100 : 0,
       open_orders: openOrders,
-      top_dishes: top.map((t) => ({
+      top_dishes: topDishes.map((t) => ({
         menu_item_id: t.menu_item_id,
         name: t.name,
         quantity: Number(t.qty),

@@ -8,11 +8,11 @@ table with the server; there are no customer logins and no online payment gatewa
 | Surface | Route | Who |
 | --- | --- | --- |
 | Guest menu, cart, order tracking, bill request | `/t/[tableId]` | Guests (mobile) |
-| Order control center, table floor, bill alerts | `/admin` | Floor manager / cashier |
-| Menu, categories, combo steps, live stock toggles | `/admin/menu` | Manager |
-| KPIs, top-selling dishes, order history | `/admin/analytics` | Owner |
-| Printable table QR codes (SVG / PNG) | `/admin/qr` | Manager |
-| Kitchen Display System (dark, high contrast) | `/kds` | Kitchen |
+| **Live Orders**: table grid, bill alerts, table drawer with "Mark as Paid / Cash Collected", ticket pipeline | `/admin` (`?tab=orders`) | Floor manager / cashier |
+| **Menu & Inventory**: dish table, instant stock switches, Add New Dish | `/admin?tab=menu` | Manager |
+| **Analytics**: today's revenue, fulfilled orders, average ticket, top 5 dishes, history | `/admin?tab=analytics` | Owner |
+| **Table QRs**: printable A4 stickers (2×2 / 3×3), SVG/PNG download | `/admin/qr` | Manager |
+| Kitchen Display System (dark, high contrast, bell + urgency colours) | `/kds` | Kitchen |
 
 ## Architecture
 
@@ -55,11 +55,14 @@ web/
   src/components/ui/          # Button, Badge, Card, Input, Switch, Dialog, Spinner (shadcn-style)
   src/components/customer/    # CustomerApp, CustomerHeader, CategoryNav (scroll-spy), MenuItemCard,
                               # ComboBuilderModal, CartDrawer (sticky bar + slide-up drawer), OrderTracker
-  src/components/admin/       # OrdersCenter, TableFloor, MenuManager, ItemFormDialog, Analytics, QrSheet
+  src/components/admin/       # AdminShell (tabs + BillAlertBanner), LiveOrdersTab, TableDetailsDrawer,
+                              # MenuInventoryTab, ItemFormDialog, AnalyticsTab, QrStickerSheet
   src/components/kds/         # KdsBoard, KdsTicket
   src/store/                  # Zustand: useCustomerStore (table, language, cart, activeOrder), useStaffStore
   src/hooks/                  # useSocket (rooms on the shared socket + refetch on reconnect), useTranslation, useNow
-  src/lib/                    # socketClient (singleton + acked commands), translations (EN/తెలుగు), api, types, chime
+  src/lib/                    # socketClient (singleton + acked commands), staffActions, translations (EN/తెలుగు),
+                              # api, types, chime (MP3 via HTML5 Audio, Web Audio synth fallback)
+  public/sounds/              # kitchen-bell.mp3 (KDS), chime.mp3 (dashboard alerts)
 ```
 
 ## Local development
@@ -154,7 +157,7 @@ Every command replies with `{ ok: true, data }` or `{ ok: false, status, error, 
 | `menu:availability_toggled` | everyone | `{ menu_item_id, is_available }` |
 | `menu:updated` | everyone | `{ at }` (dish/category edits → clients refetch) |
 | `table:bill_requested` | admin (alert sound), `table:<n>` | `{ table_number, amount_due, order_ids }` |
-| `table:updated` | admin, `table:<n>` | `{ id, status }` |
+| `table:status_updated` | admin, kds, `table:<n>` | `{ id, status }` |
 
 ## REST API
 
@@ -186,4 +189,8 @@ Public (guest) endpoints are rate-limited where they write; staff endpoints need
   `ComboConfig`). Selected options are snapshotted onto each `OrderItem`, so later menu edits never change
   past orders.
 * Browsers block audio until someone interacts with the page, so the KDS and dashboard show a one-tap
-  "enable sound" button. The chime is synthesised in the browser and played through HTML5 Audio.
+  "enable sound" button. Sounds play from `/public/sounds/*.mp3` through HTML5 Audio. If a file can't be
+  loaded or decoded, an equivalent chime is synthesised with the Web Audio API.
+* The KDS sorts tickets strictly oldest-first. New tickets glow for 5 s, timers turn orange at 8 min and
+  flash red at 15 min, and a ticket leaves the screen when it is marked served.
+* Bill-request alerts are dashboard-wide: the banner and sound fire on whichever admin tab is open.

@@ -128,7 +128,7 @@ export function CustomerApp({ tableRef }: { tableRef: string }) {
         }
       },
       [EVENTS.TABLE_BILL_REQUESTED]: () => useCustomerStore.getState().setBillRequested(true),
-      [EVENTS.TABLE_UPDATED]: (p: { status: TableStatus }) => {
+      [EVENTS.TABLE_STATUS_UPDATED]: (p: { status: TableStatus }) => {
         if (p.status !== "bill_requested") useCustomerStore.getState().setBillRequested(false);
       },
     },

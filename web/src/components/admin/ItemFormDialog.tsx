@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { DishImage } from "@/components/shared/DishImage";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input, Label, Select, Textarea } from "@/components/ui/input";
@@ -87,7 +88,7 @@ export function ItemFormDialog({ open, item, categories, defaultCategoryId, onCl
       <DialogContent className="max-w-2xl" aria-describedby="item-form-desc">
         <form onSubmit={submit} className="flex max-h-[90dvh] flex-col">
           <div className="border-b p-5 pr-12">
-            <DialogTitle>{item ? `Edit: ${item.name_en}` : "Add a new dish"}</DialogTitle>
+            <DialogTitle>{item ? `Edit: ${item.name_en}` : "Add New Dish"}</DialogTitle>
             <DialogDescription id="item-form-desc">Bilingual names show to guests based on their language toggle.</DialogDescription>
           </div>
           <div className="flex-1 space-y-4 overflow-y-auto p-5">
@@ -97,16 +98,8 @@ export function ItemFormDialog({ open, item, categories, defaultCategoryId, onCl
                 <Input id="name_en" required value={form.name_en} onChange={(e) => set("name_en", e.target.value)} placeholder="Gongura Mutton Biryani" />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="name_te">పేరు (తెలుగు)</Label>
-                <Input id="name_te" required value={form.name_te} onChange={(e) => set("name_te", e.target.value)} placeholder="గోంగూర మటన్ బిర్యానీ" />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="desc_en">Description (English)</Label>
-                <Textarea id="desc_en" className="min-h-16" value={form.description_en ?? ""} onChange={(e) => set("description_en", e.target.value)} />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="desc_te">వివరణ (తెలుగు)</Label>
-                <Textarea id="desc_te" className="min-h-16" value={form.description_te ?? ""} onChange={(e) => set("description_te", e.target.value)} />
+                <Label htmlFor="name_te">Name (Telugu) / పేరు</Label>
+                <Input id="name_te" required lang="te" value={form.name_te} onChange={(e) => set("name_te", e.target.value)} placeholder="గోంగూర మటన్ బిర్యానీ" />
               </div>
               <div className="space-y-1">
                 <Label htmlFor="category">Category</Label>
@@ -118,31 +111,43 @@ export function ItemFormDialog({ open, item, categories, defaultCategoryId, onCl
               </div>
               <div className="space-y-1">
                 <Label htmlFor="price">{form.is_combo ? "Base price (₹)" : "Price (₹)"}</Label>
-                <Input id="price" type="number" min={0} step="0.01" required value={form.price} onChange={(e) => set("price", e.target.value as unknown as number)} />
+                <Input id="price" type="number" inputMode="decimal" min={0} step="0.01" required value={form.price} onChange={(e) => set("price", e.target.value as unknown as number)} />
               </div>
               <div className="space-y-1 sm:col-span-2">
                 <Label htmlFor="image">Image URL</Label>
                 <div className="flex gap-3">
                   <Input id="image" type="url" value={form.image_url ?? ""} onChange={(e) => set("image_url", e.target.value)} placeholder="https://…" />
-                  {form.image_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={form.image_url} alt="Preview" className="size-10 shrink-0 rounded-lg object-cover" />
-                  ) : null}
+                  {form.image_url ? <DishImage src={form.image_url} className="size-10 shrink-0 rounded-lg text-base" /> : null}
                 </div>
               </div>
             </div>
-            <div className="flex flex-wrap gap-6">
-              <label className="flex items-center gap-2 text-sm font-medium">
-                <Switch checked={form.is_available} onCheckedChange={(v) => set("is_available", v)} /> Available
+
+            <div className="flex flex-wrap items-center gap-6">
+              <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  className="size-4 accent-[var(--primary)]"
+                  checked={form.is_combo}
+                  onChange={(e) => {
+                    const v = e.target.checked;
+                    setForm((f) => ({ ...f, is_combo: v, combo_steps: v && !f.combo_steps?.length ? [emptyStep(1)] : f.combo_steps }));
+                  }}
+                />
+                Combo dish (<code>is_combo</code>) — guests build it step by step
               </label>
               <label className="flex items-center gap-2 text-sm font-medium">
-                <Switch
-                  checked={form.is_combo}
-                  onCheckedChange={(v) => setForm((f) => ({ ...f, is_combo: v, combo_steps: v && !f.combo_steps?.length ? [emptyStep(1)] : f.combo_steps }))}
-                />
-                Combo (step-by-step builder)
+                <Switch checked={form.is_available} onCheckedChange={(v) => set("is_available", v)} /> Available now
               </label>
             </div>
+
+            <details className="rounded-lg border px-3 py-2 text-sm" open={Boolean(form.description_en || form.description_te)}>
+              <summary className="cursor-pointer font-medium text-muted-foreground">Descriptions (optional)</summary>
+              <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                <Textarea aria-label="Description (English)" className="min-h-16" placeholder="Description (English)" value={form.description_en ?? ""} onChange={(e) => set("description_en", e.target.value)} />
+                <Textarea aria-label="Description (Telugu)" lang="te" className="min-h-16" placeholder="వివరణ (తెలుగు)" value={form.description_te ?? ""} onChange={(e) => set("description_te", e.target.value)} />
+              </div>
+            </details>
+
             {form.is_combo && (
               <ComboStepsEditor steps={(form.combo_steps ?? []) as EditableStep[]} onChange={(s) => set("combo_steps", s)} />
             )}
@@ -151,7 +156,7 @@ export function ItemFormDialog({ open, item, categories, defaultCategoryId, onCl
             {error && <p role="alert" className="text-sm font-semibold text-destructive">{error}</p>}
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-              <Button type="submit" disabled={saving}>{saving ? "Saving…" : item ? "Save changes" : "Add dish"}</Button>
+              <Button type="submit" disabled={saving}>{saving ? "Saving…" : item ? "Save changes" : "Add to menu"}</Button>
             </div>
           </div>
         </form>

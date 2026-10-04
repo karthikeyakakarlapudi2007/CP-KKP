@@ -15,8 +15,8 @@ export const DialogDescription = ({ className, ...p }: React.ComponentPropsWitho
 );
 
 type ContentProps = React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
-  /** "center" = modal, "bottom" = mobile bottom sheet / drawer */
-  side?: "center" | "bottom";
+  /** "center" = modal, "bottom" = mobile bottom sheet, "right" = desktop side drawer */
+  side?: "center" | "bottom" | "right";
   hideClose?: boolean;
 };
 
@@ -31,6 +31,7 @@ export const DialogContent = React.forwardRef<React.ElementRef<typeof DialogPrim
           side === "center" &&
             "inset-x-4 top-1/2 mx-auto max-h-[90dvh] max-w-lg -translate-y-1/2 rounded-2xl [&>*]:animate-pop",
           side === "bottom" && "inset-x-0 bottom-0 mx-auto max-h-[92dvh] w-full max-w-lg animate-slide-up rounded-t-3xl",
+          side === "right" && "inset-y-0 right-0 h-dvh w-full max-w-md animate-slide-in-right border-l",
           className,
         )}
         {...props}

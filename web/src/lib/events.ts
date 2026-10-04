@@ -12,5 +12,5 @@ export const EVENTS = {
   MENU_AVAILABILITY_TOGGLED: "menu:availability_toggled",
   MENU_UPDATED: "menu:updated",
   TABLE_BILL_REQUESTED: "table:bill_requested",
-  TABLE_UPDATED: "table:updated",
+  TABLE_STATUS_UPDATED: "table:status_updated",
 } as const;

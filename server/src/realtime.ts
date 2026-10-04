@@ -28,7 +28,8 @@ export const broadcast = {
   billRequested(payload: { table_number: number; amount_due: number; order_ids: string[] }) {
     io?.to([ROOMS.admin, ROOMS.table(payload.table_number)]).emit(EVENTS.TABLE_BILL_REQUESTED, payload);
   },
+  /** Table status change (occupied / bill_requested / vacant) → dashboard, kitchen and the table */
   tableUpdated(payload: { id: number; status: string }) {
-    io?.to([ROOMS.admin, ROOMS.table(payload.id)]).emit(EVENTS.TABLE_UPDATED, payload);
+    io?.to([ROOMS.admin, ROOMS.kds, ROOMS.table(payload.id)]).emit(EVENTS.TABLE_STATUS_UPDATED, payload);
   },
 };

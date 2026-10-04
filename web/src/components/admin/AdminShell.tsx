@@ -1,49 +1,63 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { BarChart3, ChefHat, ClipboardList, QrCode, UtensilsCrossed } from "lucide-react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { ChefHat, Volume2, VolumeX } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { unlockAudio } from "@/lib/chime";
 import { cn } from "@/lib/utils";
-
-const NAV = [
-  { href: "/admin", label: "Orders", icon: ClipboardList },
-  { href: "/admin/menu", label: "Menu & Stock", icon: UtensilsCrossed },
-  { href: "/admin/analytics", label: "Analytics", icon: BarChart3 },
-  { href: "/admin/qr", label: "Table QR", icon: QrCode },
-];
+import { useStaffStore } from "@/store/useStaffStore";
+import { BillAlertBanner } from "./BillAlertBanner";
+import { ADMIN_TABS, parseTab } from "./tabs";
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
+  const tab = parseTab(useSearchParams().get("tab"));
+  const soundOn = useStaffStore((s) => s.soundOn);
+  const setSoundOn = useStaffStore((s) => s.setSoundOn);
+  const activeId = path.startsWith("/admin/qr") ? "qr" : tab;
+
   return (
     <div className="min-h-dvh bg-background">
       <header className="no-print sticky top-0 z-30 border-b bg-card/95 backdrop-blur">
         <div className="mx-auto flex max-w-[1600px] items-center gap-6 px-6 py-3">
-          <Link href="/admin" className="leading-tight">
+          <Link href="/admin" className="shrink-0 leading-tight">
             <span className="block font-extrabold text-primary">Kodikura Pappucharu</span>
-            <span className="block text-xs text-muted-foreground">Merchant Dashboard</span>
+            <span className="block text-xs text-muted-foreground">Merchant Control Center</span>
           </Link>
-          <nav className="flex flex-1 gap-1 overflow-x-auto">
-            {NAV.map(({ href, label, icon: Icon }) => {
-              const active = href === "/admin" ? path === href : path.startsWith(href);
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  className={cn(
-                    "flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition",
-                    active ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted",
-                  )}
-                >
-                  <Icon className="size-4" /> {label}
-                </Link>
-              );
-            })}
+          <nav className="flex flex-1 gap-1 overflow-x-auto" role="tablist" aria-label="Dashboard sections">
+            {ADMIN_TABS.map(({ id, label, href, icon: Icon }) => (
+              <Link
+                key={id}
+                href={href}
+                role="tab"
+                aria-selected={activeId === id}
+                className={cn(
+                  "flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition",
+                  activeId === id ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted",
+                )}
+              >
+                <Icon className="size-4" /> {label}
+              </Link>
+            ))}
           </nav>
-          <Link href="/kds" target="_blank" className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold hover:bg-muted">
+          <Button
+            size="sm"
+            variant={soundOn ? "outline" : "accent"}
+            className={cn(!soundOn && "animate-pulse")}
+            onClick={async () => {
+              if (!soundOn) await unlockAudio();
+              setSoundOn(!soundOn);
+            }}
+          >
+            {soundOn ? <Volume2 /> : <VolumeX />} {soundOn ? "Alerts on" : "Enable sound alerts"}
+          </Button>
+          <Link href="/kds" target="_blank" className="flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold hover:bg-muted">
             <ChefHat className="size-4" /> Open KDS
           </Link>
         </div>
+        <BillAlertBanner />
       </header>
-      <div className="mx-auto max-w-[1600px] p-6">{children}</div>
+      <div className="mx-auto max-w-[1600px] p-6 print:max-w-none print:p-0">{children}</div>
     </div>
   );
 }

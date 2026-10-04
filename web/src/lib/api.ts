@@ -76,7 +76,8 @@ export const api = {
     request<Order>(`/api/orders/${id}/status`, { method: "PATCH", body: json({ status }), staff: true }),
   tables: () => request<TableSummary[]>("/api/tables", { staff: true }),
   settleTable: (table: number) => request<{ settled_order_ids: string[] }>(`/api/tables/${table}/settle`, { method: "POST", staff: true }),
-  analytics: (range: "today" | "7d" | "30d") => request<AnalyticsSummary>(`/api/analytics/summary?range=${range}`, { staff: true }),
+  analytics: (range: "today" | "7d" | "30d", top = 10) =>
+    request<AnalyticsSummary>(`/api/analytics/summary?range=${range}&top=${top}`, { staff: true }),
 
   toggleAvailability: (id: number, is_available: boolean) =>
     request<{ id: number; is_available: boolean }>(`/api/menu-items/${id}/availability`, {

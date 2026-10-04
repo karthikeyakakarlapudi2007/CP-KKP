@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { QrSheet } from "@/components/admin/QrSheet";
+import { QrStickerSheet } from "@/components/admin/QrStickerSheet";
 
-export const metadata: Metadata = { title: "Table QR Codes" };
+export const metadata: Metadata = { title: "Table QRs" };
 
 export default function AdminQrPage() {
-  return <QrSheet />;
+  return <QrStickerSheet />;
 }

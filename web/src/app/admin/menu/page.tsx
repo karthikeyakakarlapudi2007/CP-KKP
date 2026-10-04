@@ -1,8 +1,5 @@
-import type { Metadata } from "next";
-import { MenuManager } from "@/components/admin/MenuManager";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = { title: "Menu" };
-
-export default function AdminMenuPage() {
-  return <MenuManager />;
+export default function LegacyMenuRoute() {
+  redirect("/admin?tab=menu");
 }

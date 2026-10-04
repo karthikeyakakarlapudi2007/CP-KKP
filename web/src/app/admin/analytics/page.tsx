@@ -1,8 +1,5 @@
-import type { Metadata } from "next";
-import { Analytics } from "@/components/admin/Analytics";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = { title: "Analytics" };
-
-export default function AdminAnalyticsPage() {
-  return <Analytics />;
+export default function LegacyAnalyticsRoute() {
+  redirect("/admin?tab=analytics");
 }

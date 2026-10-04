@@ -23,7 +23,8 @@ export class CommandError extends Error {
 }
 
 let socket: Socket | null = null;
-const joined = new Map<string, JoinPayload>();
+/** room payload → number of mounted users (several components may share one room) */
+const joined = new Map<string, { payload: JoinPayload; refs: number }>();
 
 export function getSocket(): Socket {
   if (!socket) {
@@ -32,7 +33,7 @@ export function getSocket(): Socket {
       reconnectionDelayMax: 5000,
     });
     socket.on("connect", () => {
-      joined.forEach((payload) => socket!.emit(EVENTS.JOIN, payload));
+      joined.forEach(({ payload }) => socket!.emit(EVENTS.JOIN, payload));
     });
   }
   return socket;
@@ -42,9 +43,21 @@ export function getSocket(): Socket {
 export function joinRoom(payload: JoinPayload): () => void {
   const key = JSON.stringify(payload);
   const s = getSocket();
-  joined.set(key, payload);
-  if (s.connected) s.emit(EVENTS.JOIN, payload);
+  const entry = joined.get(key);
+  if (entry) {
+    entry.refs += 1;
+  } else {
+    joined.set(key, { payload, refs: 1 });
+    if (s.connected) s.emit(EVENTS.JOIN, payload);
+  }
+  let left = false;
   return () => {
+    if (left) return;
+    left = true;
+    const current = joined.get(key);
+    if (!current) return;
+    current.refs -= 1;
+    if (current.refs > 0) return;
     joined.delete(key);
     if (s.connected) s.emit(EVENTS.LEAVE, payload);
   };

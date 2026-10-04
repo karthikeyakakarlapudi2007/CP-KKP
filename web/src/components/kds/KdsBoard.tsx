@@ -1,35 +1,39 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Maximize, Volume2, VolumeX, Wifi, WifiOff } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { useNow } from "@/hooks/useNow";
 import { useSocket } from "@/hooks/useSocket";
-import { api, ApiError } from "@/lib/api";
-import { playChime, unlockAudio } from "@/lib/chime";
+import { api } from "@/lib/api";
+import { playSound, unlockAudio } from "@/lib/chime";
 import { EVENTS } from "@/lib/events";
+import { errorMessage, updateOrderStatus } from "@/lib/staffActions";
 import type { Order } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useStaffStore } from "@/store/useStaffStore";
-import { KdsTicket } from "./KdsTicket";
+import { KdsTicket, urgencyOf } from "./KdsTicket";
 
-const KITCHEN_STATUSES = new Set(["pending", "preparing"]);
+const KITCHEN = new Set(["pending", "preparing"]);
+const GLOW_MS = 5000;
 
 export function KdsBoard() {
   const staffKey = useStaffStore((s) => s.key);
+  const soundOn = useStaffStore((s) => s.soundOn);
+  const setSoundOn = useStaffStore((s) => s.setSoundOn);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<Set<string>>(new Set());
-  const [soundOn, setSoundOn] = useState(false);
-  const now = useNow(10_000);
+  const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
+  const [fresh, setFresh] = useState<ReadonlySet<string>>(new Set());
+  const glowTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const now = useNow(5_000);
 
   const load = useCallback(async () => {
     try {
-      const data = await api.orders("active");
-      setOrders(data.filter((o) => KITCHEN_STATUSES.has(o.status)));
+      setOrders((await api.orders("active")).filter((o) => KITCHEN.has(o.status)));
       setError(null);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to load tickets");
+      setError(errorMessage(e, "Failed to load tickets"));
     } finally {
       setLoading(false);
     }
@@ -37,13 +41,32 @@ export function KdsBoard() {
 
   useEffect(() => {
     void load();
+    const timers = glowTimers.current;
+    return () => timers.forEach(clearTimeout);
   }, [load]);
 
+  /** Newest first in state (prepend); the grid re-sorts strictly by urgency. */
   const upsert = useCallback((o: Order) => {
     setOrders((prev) => {
       const rest = prev.filter((p) => p.id !== o.id);
-      return KITCHEN_STATUSES.has(o.status) ? [...rest, o] : rest;
+      return KITCHEN.has(o.status) ? [o, ...rest] : rest; // served / paid / cancelled leave the kitchen
     });
+  }, []);
+
+  const glow = useCallback((id: string) => {
+    setFresh((s) => new Set(s).add(id));
+    clearTimeout(glowTimers.current.get(id));
+    glowTimers.current.set(
+      id,
+      setTimeout(() => {
+        setFresh((s) => {
+          const n = new Set(s);
+          n.delete(id);
+          return n;
+        });
+        glowTimers.current.delete(id);
+      }, GLOW_MS),
+    );
   }, []);
 
   const { connected } = useSocket(
@@ -51,79 +74,97 @@ export function KdsBoard() {
     {
       [EVENTS.ORDER_CREATED]: (o: Order) => {
         upsert(o);
-        if (soundOn) void playChime();
+        glow(o.id);
+        if (useStaffStore.getState().soundOn) void playSound("kitchenBell");
       },
       [EVENTS.ORDER_STATUS_CHANGED]: upsert,
     },
     load,
   );
 
+  // Oldest unserved ticket first — the most urgent food is always top-left
   const sorted = useMemo(() => [...orders].sort((a, b) => a.created_at.localeCompare(b.created_at)), [orders]);
 
-  const advance = async (o: Order) => {
-    const next = o.status === "pending" ? "preparing" : "served";
-    setBusy((b) => new Set(b).add(o.id));
-    try {
-      upsert(await api.setOrderStatus(o.id, next));
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Update failed");
-      void load();
-    } finally {
-      setBusy((b) => {
-        const n = new Set(b);
-        n.delete(o.id);
-        return n;
-      });
-    }
-  };
+  const advance = useCallback(
+    async (o: Order, next: "preparing" | "served") => {
+      setBusy((b) => new Set(b).add(o.id));
+      try {
+        upsert(await updateOrderStatus(o.id, next));
+      } catch (e) {
+        setError(errorMessage(e, "Update failed"));
+        void load();
+      } finally {
+        setBusy((b) => {
+          const n = new Set(b);
+          n.delete(o.id);
+          return n;
+        });
+      }
+    },
+    [upsert, load],
+  );
 
-  const enableSound = async () => {
+  const toggleSound = async () => {
     if (soundOn) return setSoundOn(false);
     await unlockAudio();
     setSoundOn(true);
   };
 
-  const counts = { pending: orders.filter((o) => o.status === "pending").length, preparing: orders.filter((o) => o.status === "preparing").length };
-  const late = orders.filter((o) => now - new Date(o.created_at).getTime() > 15 * 60_000).length;
+  const waiting = orders.filter((o) => o.status === "pending").length;
+  const cooking = orders.length - waiting;
+  const late = orders.filter((o) => urgencyOf(o.created_at, now) === "late").length;
 
   return (
-    <div className="dark min-h-dvh bg-neutral-950 text-white">
-      <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-neutral-800 bg-neutral-950/95 px-4 py-3 backdrop-blur">
+    <div className="min-h-dvh bg-slate-950 text-white">
+      <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 bg-slate-950/95 px-4 py-3 backdrop-blur">
         <div className="flex items-baseline gap-3">
           <h1 className="text-2xl font-black tracking-tight">KITCHEN · కిచెన్</h1>
-          <span className="text-lg font-bold tabular-nums text-neutral-400">
+          <span className="text-lg font-bold tabular-nums text-slate-400">
             {new Date(now).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-sm font-bold">
-          <span className="rounded-lg bg-neutral-800 px-3 py-1.5">NEW {counts.pending}</span>
-          <span className="rounded-lg bg-sky-900 px-3 py-1.5 text-sky-200">COOKING {counts.preparing}</span>
+          <span className="rounded-lg bg-slate-800 px-3 py-1.5">NEW {waiting}</span>
+          <span className="rounded-lg bg-sky-950 px-3 py-1.5 text-sky-300">COOKING {cooking}</span>
           {late > 0 && <span className="animate-pulse rounded-lg bg-red-600 px-3 py-1.5">LATE {late}</span>}
-          <span className={cn("flex items-center gap-1 rounded-lg px-3 py-1.5", connected ? "bg-emerald-900 text-emerald-200" : "bg-red-900 text-red-200")}>
+          <span className={cn("flex items-center gap-1 rounded-lg px-3 py-1.5", connected ? "bg-emerald-950 text-emerald-300" : "bg-red-950 text-red-300")}>
             {connected ? <Wifi className="size-4" /> : <WifiOff className="size-4" />} {connected ? "LIVE" : "OFFLINE"}
           </span>
-          <button onClick={enableSound} className={cn("flex items-center gap-1 rounded-lg px-3 py-1.5", soundOn ? "bg-neutral-800" : "animate-pulse bg-amber-500 text-black")}>
-            {soundOn ? <Volume2 className="size-4" /> : <VolumeX className="size-4" />} {soundOn ? "SOUND ON" : "TAP TO ENABLE SOUND"}
+          <button
+            onClick={toggleSound}
+            className={cn("flex items-center gap-1 rounded-lg px-3 py-1.5", soundOn ? "bg-slate-800" : "animate-pulse bg-amber-500 text-slate-950")}
+          >
+            {soundOn ? <Volume2 className="size-4" /> : <VolumeX className="size-4" />} {soundOn ? "BELL ON" : "TAP TO ENABLE BELL"}
           </button>
-          <button onClick={() => document.documentElement.requestFullscreen?.().catch(() => undefined)} className="rounded-lg bg-neutral-800 p-2" aria-label="Fullscreen">
+          <button
+            onClick={() => document.documentElement.requestFullscreen?.().catch(() => undefined)}
+            className="rounded-lg bg-slate-800 p-2"
+            aria-label="Fullscreen"
+          >
             <Maximize className="size-4" />
           </button>
         </div>
       </header>
 
-      {error && <div className="bg-red-900 px-4 py-2 text-center font-bold">{error}</div>}
+      {error && (
+        <button onClick={() => setError(null)} className="block w-full bg-red-900 px-4 py-2 text-center font-bold">
+          {error} — tap to dismiss
+        </button>
+      )}
 
       {loading ? (
-        <div className="flex h-[70dvh] items-center justify-center"><Spinner className="size-12 text-white" /></div>
+        <div className="flex h-[70dvh] items-center justify-center">
+          <Spinner className="size-12 text-white" />
+        </div>
       ) : sorted.length === 0 ? (
-        <div className="flex h-[70dvh] flex-col items-center justify-center gap-2 text-neutral-500">
+        <div className="flex h-[70dvh] flex-col items-center justify-center gap-2 text-slate-500">
           <p className="text-3xl font-black">All caught up 🎉</p>
-          <p className="text-lg">New orders will appear here instantly.</p>
+          <p className="text-lg">New orders appear here instantly.</p>
         </div>
       ) : (
-        <main className="grid grid-cols-1 items-start gap-4 p-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+        <main className="grid grid-cols-1 items-start gap-4 p-4 md:grid-cols-3 xl:grid-cols-4">
           {sorted.map((o) => (
-            <KdsTicket key={o.id} order={o} now={now} busy={busy.has(o.id)} onAdvance={() => void advance(o)} />
+            <KdsTicket key={o.id} order={o} now={now} isNew={fresh.has(o.id)} busy={busy.has(o.id)} onAdvance={advance} />
           ))}
         </main>
       )}

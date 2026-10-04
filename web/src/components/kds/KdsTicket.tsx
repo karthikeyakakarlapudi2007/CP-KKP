@@ -1,82 +1,117 @@
 "use client";
-import { ChefHat, Clock, HandPlatter, MessageSquareWarning } from "lucide-react";
+import { memo } from "react";
+import { ChefHat, Clock, HandPlatter, Loader2 } from "lucide-react";
 import type { Order } from "@/lib/types";
-import { cn, minutesSince, splitSnapshot } from "@/lib/utils";
+import { cn, splitSnapshot } from "@/lib/utils";
 
-type Props = { order: Order; now: number; busy: boolean; onAdvance: () => void };
+type Props = {
+  order: Order;
+  now: number;
+  isNew: boolean;
+  busy: boolean;
+  onAdvance: (order: Order, next: "preparing" | "served") => void;
+};
 
-function urgency(mins: number) {
-  if (mins > 15) return { ring: "border-red-500 shadow-red-900/50", head: "bg-red-600", text: "text-red-100", pulse: true };
-  if (mins >= 8) return { ring: "border-amber-500", head: "bg-amber-500 text-black", text: "text-black/80", pulse: false };
-  return { ring: "border-emerald-600", head: "bg-emerald-700", text: "text-emerald-100", pulse: false };
+/** "Select Base" → "Base", "Choose Curry" → "Curry" for tight kitchen tickets */
+const shortStep = (title: string) => title.replace(/^(select|choose|pick)\s+/i, "").replace(/\s*\(.*\)\s*$/, "");
+
+export function elapsedLabel(createdAt: string, now: number) {
+  const secs = Math.max(0, Math.floor((now - new Date(createdAt).getTime()) / 1000));
+  if (secs < 60) return "just now";
+  const m = Math.floor(secs / 60);
+  if (m < 60) return `${m}m ago`;
+  return `${Math.floor(m / 60)}h ${m % 60}m ago`;
 }
 
-export function KdsTicket({ order, now, busy, onAdvance }: Props) {
-  const mins = minutesSince(order.created_at, now);
-  const u = urgency(mins);
+export function urgencyOf(createdAt: string, now: number): "ok" | "warn" | "late" {
+  const mins = (now - new Date(createdAt).getTime()) / 60_000;
+  return mins >= 15 ? "late" : mins >= 8 ? "warn" : "ok";
+}
+
+export const KdsTicket = memo(function KdsTicket({ order, now, isNew, busy, onAdvance }: Props) {
+  const urgency = urgencyOf(order.created_at, now);
   const preparing = order.status === "preparing";
 
   return (
-    <button
-      onClick={onAdvance}
-      disabled={busy}
+    <article
+      aria-label={`Table ${order.table_number}`}
       className={cn(
-        "flex w-full flex-col overflow-hidden rounded-2xl border-4 bg-neutral-900 text-left shadow-xl transition active:scale-[0.98] disabled:opacity-60",
-        u.ring,
-        u.pulse && "animate-[pulse_2s_ease-in-out_infinite]",
+        "flex flex-col overflow-hidden rounded-2xl border-2 bg-slate-900 shadow-xl transition-[border-color,box-shadow] duration-500",
+        urgency === "ok" && "border-slate-700",
+        urgency === "warn" && "border-orange-500",
+        urgency === "late" && "border-red-500 shadow-red-950",
+        isNew && "animate-[kds-glow_1.25s_ease-in-out_infinite] border-sky-400",
       )}
-      aria-label={`Table ${order.table_number}, ${preparing ? "mark served" : "start preparing"}`}
     >
-      <div className={cn("flex items-center justify-between px-4 py-3", u.head)}>
-        <span className="text-4xl font-black tracking-tight">TABLE #{order.table_number}</span>
-        <span className={cn("flex items-center gap-1 text-lg font-bold", u.text)}>
-          <Clock className="size-5" />
-          {mins === 0 ? "now" : `${mins} min${mins === 1 ? "" : "s"} ago`}
+      {/* Header: giant table badge + live timer */}
+      <header className="flex items-center justify-between gap-2 border-b border-slate-800 bg-slate-950/60 px-4 py-3">
+        <span className="flex items-baseline gap-1.5 whitespace-nowrap rounded-xl bg-white px-3 py-1 font-black text-slate-950">
+          <span className="text-base tracking-wider">TABLE</span>
+          <span className="text-4xl leading-none tracking-tight">#{order.table_number}</span>
         </span>
+        <span
+          className={cn(
+            "flex items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-1 text-lg font-black tabular-nums",
+            urgency === "ok" && "bg-slate-800 text-slate-200",
+            urgency === "warn" && "bg-orange-500 text-slate-950",
+            urgency === "late" && "animate-[kds-flash_0.9s_ease-in-out_infinite] bg-red-600 text-white",
+          )}
+        >
+          <Clock className="size-5" />
+          {elapsedLabel(order.created_at, now)}
+        </span>
+      </header>
+
+      <div className="flex items-center justify-between px-4 pt-2 text-xs font-bold uppercase tracking-widest">
+        <span className="text-slate-500">#{order.id.slice(0, 6)}</span>
+        {isNew && <span className="rounded bg-sky-500 px-1.5 text-slate-950">New</span>}
+        <span className={preparing ? "text-sky-400" : "text-slate-400"}>{preparing ? "● Cooking" : "○ Waiting"}</span>
       </div>
 
-      <div className="flex items-center justify-between border-b border-neutral-800 px-4 py-1.5 text-xs font-bold uppercase tracking-widest text-neutral-400">
-        <span>#{order.id.slice(0, 6)}</span>
-        <span className={preparing ? "text-sky-400" : "text-neutral-300"}>{preparing ? "● Preparing" : "○ New"}</span>
-      </div>
-
+      {/* Body */}
       <ul className="flex-1 space-y-3 px-4 py-3">
         {order.items.map((i) => (
           <li key={i.id}>
-            <p className="text-xl font-extrabold leading-tight text-white">
-              <span className="mr-2 inline-block min-w-12 rounded bg-white px-1.5 text-center text-neutral-950">x{i.quantity}</span>
-              {splitSnapshot(i.item_name_snapshot, "en")}
+            <p className="flex items-baseline gap-2 text-xl leading-tight">
+              <span className="shrink-0 font-black text-amber-300">{i.quantity}x</span>
+              <span className="font-bold text-white">{splitSnapshot(i.item_name_snapshot, "en")}</span>
             </p>
-            {i.selected_combo_options?.length ? (
-              <ul className="ml-14 mt-1 space-y-0.5 text-base text-neutral-200">
-                {i.selected_combo_options.map((s) => (
-                  <li key={s.step_number}>
-                    <span className="text-neutral-400">{s.step_title_en}:</span>{" "}
-                    <span className="font-bold">{s.options.map((o) => o.name_en).join(", ")}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-            {i.item_notes && <p className="ml-14 mt-1 font-bold text-amber-300">↳ {i.item_notes}</p>}
+            {i.selected_combo_options?.map((s) => (
+              <p key={s.step_number} className="ml-8 mt-0.5 text-base text-slate-300">
+                ↳ {shortStep(s.step_title_en)}: <span className="font-bold text-white">{s.options.map((o) => o.name_en).join(", ")}</span>
+              </p>
+            ))}
+            {i.item_notes && <p className="ml-8 mt-0.5 text-base font-semibold text-amber-300">↳ Note: {i.item_notes}</p>}
           </li>
         ))}
       </ul>
 
       {order.customer_notes && (
-        <div className="mx-3 mb-3 flex gap-2 rounded-lg border-2 border-amber-400 bg-amber-400/10 px-3 py-2 text-lg font-bold text-amber-300">
-          <MessageSquareWarning className="mt-1 size-5 shrink-0" />
-          <span>{order.customer_notes}</span>
+        <div className="mx-4 mb-3 rounded border border-amber-600 bg-amber-950/60 p-2 text-sm font-medium text-amber-200">
+          📝 {order.customer_notes}
         </div>
       )}
 
-      <div
-        className={cn(
-          "flex items-center justify-center gap-2 py-3 text-lg font-black uppercase tracking-wide",
-          preparing ? "bg-emerald-600 text-white" : "bg-sky-600 text-white",
+      {/* Actions */}
+      <div className="p-3 pt-0">
+        {preparing ? (
+          <button
+            onClick={() => onAdvance(order, "served")}
+            disabled={busy}
+            className="flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 text-lg font-black uppercase tracking-wide text-white transition active:scale-[0.98] disabled:opacity-60"
+          >
+            {busy ? <Loader2 className="size-6 animate-spin" /> : <HandPlatter className="size-6" />} Mark Ready / Served
+          </button>
+        ) : (
+          <button
+            onClick={() => onAdvance(order, "preparing")}
+            disabled={busy}
+            className="flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-sky-600 text-lg font-black uppercase tracking-wide text-white transition active:scale-[0.98] disabled:opacity-60"
+          >
+            {busy ? <Loader2 className="size-6 animate-spin" /> : <ChefHat className="size-6" />} Start Preparing
+          </button>
         )}
-      >
-        {preparing ? <><HandPlatter className="size-6" /> Tap: Ready / Served</> : <><ChefHat className="size-6" /> Tap: Start Preparing</>}
       </div>
-    </button>
+    </article>
   );
-}
+});

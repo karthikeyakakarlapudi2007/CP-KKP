@@ -60,6 +60,8 @@
   --animate-fade-in: fade-in 0.2s ease-out;
   --animate-pop: pop 0.22s cubic-bezier(0.32, 0.72, 0, 1);
   --animate-bump: bump 0.35s ease-out;
+  --animate-bell-flash: bell-flash 1.1s ease-in-out infinite;
+  --animate-slide-in-right: slide-in-right 0.3s cubic-bezier(0.32, 0.72, 0, 1);
 
   @keyframes slide-up {
     from { transform: translateY(100%); }
@@ -73,11 +75,29 @@
     from { opacity: 0; transform: translateY(8px) scale(0.97); }
     to { opacity: 1; transform: translateY(0) scale(1); }
   }
+  @keyframes bell-flash {
+    0%, 100% { background-color: rgb(252 211 77); box-shadow: 0 0 0 0 rgb(245 158 11 / 0.7); }
+    50% { background-color: rgb(245 158 11); box-shadow: 0 0 0 10px rgb(245 158 11 / 0); }
+  }
+  @keyframes slide-in-right {
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
+  }
   @keyframes bump {
     0% { transform: scale(1); }
     40% { transform: scale(1.12); }
     100% { transform: scale(1); }
   }
+}
+
+/* KDS: pulsing glow on freshly arrived tickets, flashing red timer once a ticket is 15+ min old */
+@keyframes kds-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgb(56 189 248 / 0), 0 0 18px 2px rgb(56 189 248 / 0.35); }
+  50% { box-shadow: 0 0 0 4px rgb(56 189 248 / 0.55), 0 0 36px 8px rgb(56 189 248 / 0.6); }
+}
+@keyframes kds-flash {
+  0%, 100% { background-color: rgb(220 38 38); }
+  50% { background-color: rgb(127 29 29); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -102,4 +122,54 @@
 @media print {
   .no-print { display: none !important; }
   body { background: white; }
+}
+
+/* ---------- Table QR stickers: A4 print layout ---------- */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 0; /* also removes the browser's own header/footer (URL, date) */
+  }
+  html, body {
+    background: #fff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  /* no offsets above the first sheet, or every 297mm sheet would spill onto the next page */
+  .qr-root, .qr-pages {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  .qr-root > * + *, .qr-pages > * + * {
+    margin-top: 0 !important;
+  }
+  .qr-page {
+    display: grid !important;
+    grid-template-columns: repeat(var(--cols), 1fr) !important;
+    /* fixed rows, so a half-empty last sheet keeps the same sticker size */
+    grid-template-rows: repeat(var(--cols), minmax(0, 1fr)) !important;
+    gap: 8mm !important;
+    width: 210mm;
+    height: 296.5mm; /* a hair under A4 so rounding never creates a blank page */
+    overflow: hidden;
+    break-inside: avoid;
+    box-sizing: border-box;
+    padding: 12mm !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    break-after: page;
+    page-break-after: always;
+  }
+  .qr-page:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+  .qr-page > * {
+    min-height: 0;
+  }
+  .sticker {
+    box-shadow: none !important;
+    break-inside: avoid;
+  }
 }
