@@ -68,6 +68,39 @@ web/
   public/sounds/              # kitchen-bell.mp3 (KDS), chime.mp3 (dashboard alerts)
 ```
 
+## Quick start (Docker, one command)
+
+Needs only [Docker Desktop](https://www.docker.com/products/docker-desktop/), with no Node or
+PostgreSQL install.
+
+```bash
+git clone -b claude/laughing-hopper-ugfa96 https://github.com/karthikeyakakarlapudi2007/CP-KKP
+cd CP-KKP
+docker compose up --build
+```
+
+The first build takes a few minutes. Then open:
+
+| Screen | URL |
+| --- | --- |
+| Home | http://localhost:3000 |
+| Guest menu (table 1) | http://localhost:3000/t/1 |
+| Merchant dashboard | http://localhost:3000/admin |
+| Kitchen display | http://localhost:3000/kds |
+| Table QR stickers | http://localhost:3000/admin/qr |
+| API health | http://localhost:4000/health |
+
+The database is migrated and seeded automatically (tables 1–10 + the Telugu menu) and kept in a Docker
+volume between runs. To test on **phones on the same Wi-Fi**, start it with your computer's LAN IP so
+the QR codes and API use an address the phone can reach:
+
+```bash
+HOST_IP=192.168.1.25 docker compose up --build              # macOS / Linux
+$env:HOST_IP="192.168.1.25"; docker compose up --build      # Windows PowerShell
+```
+
+Stop with `Ctrl+C` (or `docker compose down`). `docker compose down -v` also deletes the database.
+
 ## Local development
 
 Requires Node 20+ and PostgreSQL 14+.

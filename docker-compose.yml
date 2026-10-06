@@ -1,0 +1,49 @@
+# One-command local run:   docker compose up --build
+# Then open http://localhost:3000
+#
+# To let phones on the same Wi-Fi scan the table QR codes, pass your computer's LAN IP:
+#   HOST_IP=192.168.1.25 docker compose up --build      (macOS/Linux)
+#   $env:HOST_IP="192.168.1.25"; docker compose up --build   (Windows PowerShell)
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: kodikura
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d kodikura"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: ./server
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/kodikura?schema=public
+      CORS_ORIGIN: http://localhost:3000,http://${HOST_IP:-localhost}:3000
+      STAFF_API_KEY: ${STAFF_API_KEY:-}
+      TZ_OFFSET_MINUTES: "330"
+    ports:
+      - "4000:4000"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./web
+      args:
+        NEXT_PUBLIC_API_URL: http://${HOST_IP:-localhost}:4000
+        NEXT_PUBLIC_SITE_URL: http://${HOST_IP:-localhost}:3000
+    depends_on:
+      - api
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
