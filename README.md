@@ -68,6 +68,20 @@ web/
   public/sounds/              # kitchen-bell.mp3 (KDS), chime.mp3 (dashboard alerts)
 ```
 
+## Screenshots
+
+| Guest menu | Combo builder | Order tracking |
+| --- | --- | --- |
+| ![Guest menu](screenshots/1-guest-menu.png) | ![Combo builder](screenshots/2-guest-combo-builder.png) | ![Order tracking](screenshots/3-guest-order-tracking.png) |
+
+| Kitchen display | Live orders + bill alert | 80mm thermal bill |
+| --- | --- | --- |
+| ![KDS](screenshots/4-kitchen-display.png) | ![Live orders](screenshots/5-admin-live-orders.png) | ![Thermal bill](screenshots/6-admin-thermal-bill.png) |
+
+| Menu CMS | Analytics | Table QR stickers |
+| --- | --- | --- |
+| ![Menu CMS](screenshots/7-admin-menu-cms.png) | ![Analytics](screenshots/8-admin-analytics.png) | ![QR stickers](screenshots/9-table-qr-stickers.png) |
+
 ## Quick start (Docker, one command)
 
 Needs only [Docker Desktop](https://www.docker.com/products/docker-desktop/), with no Node or
